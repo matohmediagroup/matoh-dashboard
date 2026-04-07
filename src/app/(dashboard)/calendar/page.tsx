@@ -44,9 +44,11 @@ export default function CalendarPage() {
   async function addEvent() {
     if (!form.title.trim() || !form.event_date) return
     setSaving(true)
-    await supabase.from('calendar_events').insert({
+    const eventType = (form.event_type || 'meeting') as 'meeting' | 'call' | 'other'
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('calendar_events') as any).insert({
       title: form.title,
-      event_type: form.event_type as 'meeting' | 'call',
+      event_type: eventType,
       client_id: form.client_id || null,
       event_date: form.event_date,
       event_time: form.event_time || null,
