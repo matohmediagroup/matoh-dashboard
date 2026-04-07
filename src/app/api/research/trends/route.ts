@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { NextResponse } from 'next/server'
 
 const YOUTUBE_KEY = process.env.YOUTUBE_API_KEY!
