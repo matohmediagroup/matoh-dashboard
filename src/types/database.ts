@@ -360,6 +360,113 @@ export type Database = {
           description?: string
         }
       }
+      social_accounts: {
+        Row: {
+          id: string
+          client_id: string
+          platform: 'tiktok' | 'instagram' | 'youtube'
+          handle: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          client_id: string
+          platform: 'tiktok' | 'instagram' | 'youtube'
+          handle: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          client_id?: string
+          platform?: 'tiktok' | 'instagram' | 'youtube'
+          handle?: string
+        }
+      }
+      social_stats: {
+        Row: {
+          id: string
+          client_id: string
+          platform: 'tiktok' | 'instagram' | 'youtube'
+          stats: Record<string, unknown> | null
+          videos: Record<string, unknown>[] | null
+          fetched_at: string
+        }
+        Insert: {
+          id?: string
+          client_id: string
+          platform: 'tiktok' | 'instagram' | 'youtube'
+          stats?: Record<string, unknown> | null
+          videos?: Record<string, unknown>[] | null
+          fetched_at?: string
+        }
+        Update: {
+          id?: string
+          client_id?: string
+          platform?: 'tiktok' | 'instagram' | 'youtube'
+          stats?: Record<string, unknown> | null
+          videos?: Record<string, unknown>[] | null
+          fetched_at?: string
+        }
+      }
+      sops: {
+        Row: {
+          id: string
+          title: string
+          category: string
+          description: string | null
+          pdf_url: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          title: string
+          category: string
+          description?: string | null
+          pdf_url?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          title?: string
+          category?: string
+          description?: string | null
+          pdf_url?: string | null
+          created_by?: string | null
+        }
+      }
+      generated_scripts: {
+        Row: {
+          id: string
+          client_id: string
+          dealer_key: string
+          run_date: string | null
+          scripts: Record<string, unknown>[] | null
+          status: 'pending' | 'running' | 'done' | 'error'
+          job_id: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          client_id: string
+          dealer_key: string
+          run_date?: string | null
+          scripts?: Record<string, unknown>[] | null
+          status?: 'pending' | 'running' | 'done' | 'error'
+          job_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          client_id?: string
+          dealer_key?: string
+          run_date?: string | null
+          scripts?: Record<string, unknown>[] | null
+          status?: 'pending' | 'running' | 'done' | 'error'
+          job_id?: string | null
+        }
+      }
     }
     Views: Record<string, never>
     Functions: {

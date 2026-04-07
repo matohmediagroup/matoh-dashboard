@@ -36,7 +36,8 @@ export default function ContentPage() {
     if (!user) return
     setUserId(user.id)
 
-    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: profile } = await (supabase.from('profiles') as any).select('role').eq('id', user.id).single() as { data: { role: string } | null }
     const role = profile?.role ?? ''
     setUserRole(role)
 
