@@ -8,22 +8,24 @@ import { Badge } from '@/components/ui/Badge'
 import { PageSpinner } from '@/components/ui/Spinner'
 import type { Client } from '@/types/database'
 
-// Same competitor handles used in dealer-scripter
 const COMPETITORS = [
-  { handle: '@milesperhr',        platform: 'tiktok' as const, label: 'Miles Per Hr' },
-  { handle: '@omardrives',        platform: 'tiktok' as const, label: 'Omar Drives' },
-  { handle: '@supercarblondie',   platform: 'youtube' as const, label: 'Supercar Blondie' },
-  { handle: '@tflcar',            platform: 'youtube' as const, label: 'TFL Car' },
-  { handle: '@carwow',            platform: 'youtube' as const, label: 'Carwow' },
-  { handle: '@vinwiki',           platform: 'youtube' as const, label: 'VINwiki' },
-  { handle: '@motortrend',        platform: 'youtube' as const, label: 'MotorTrend' },
-  { handle: '@donutmedia',        platform: 'youtube' as const, label: 'Donut Media' },
+  { handle: '@milesperhr',       platform: 'tiktok' as const,          label: 'Miles Per Hr' },
+  { handle: '@omardrives',       platform: 'tiktok' as const,          label: 'Omar Drives' },
+  { handle: '@carthrottle',      platform: 'tiktok' as const,          label: 'Car Throttle' },
+  { handle: '@carscouted',       platform: 'tiktok' as const,          label: 'Car Scouted' },
+  { handle: '@supercarblondie',  platform: 'youtube_shorts' as const,  label: 'Supercar Blondie' },
+  { handle: '@carwow',           platform: 'youtube_shorts' as const,  label: 'Carwow' },
+  { handle: '@motortrend',       platform: 'youtube_shorts' as const,  label: 'MotorTrend' },
+  { handle: '@donutmedia',       platform: 'youtube_shorts' as const,  label: 'Donut Media' },
+  { handle: '@supercarblondie',  platform: 'instagram' as const,       label: 'Supercar Blondie' },
+  { handle: '@carthrottle',      platform: 'instagram' as const,       label: 'Car Throttle' },
+  { handle: '@motortrend',       platform: 'instagram' as const,       label: 'MotorTrend' },
 ]
 
 interface TrendVideo {
   handle: string
   label: string
-  platform: 'tiktok' | 'youtube'
+  platform: 'tiktok' | 'youtube' | 'youtube_shorts' | 'instagram'
   title: string
   views: number
   likes: number
@@ -31,6 +33,13 @@ interface TrendVideo {
   url: string
   thumbnail: string
   date: string
+}
+
+function platformBadge(platform: TrendVideo['platform']) {
+  if (platform === 'tiktok') return '🎵 TikTok'
+  if (platform === 'youtube_shorts') return '▶️ YT Shorts'
+  if (platform === 'instagram') return '📸 Reels'
+  return '▶️ YouTube'
 }
 
 // Fetch top videos from YouTube for a channel
@@ -124,7 +133,7 @@ export default function ResearchPage() {
         <div>
           <h1 className="text-xl font-semibold text-[#e8e8e8]">Content Research</h1>
           <p className="text-xs text-[#888] mt-0.5">
-            Trending automotive content from {COMPETITORS.length} competitor accounts
+            Top short-form content from TikTok, Instagram Reels &amp; YouTube Shorts
             {lastFetched && ` · Last refreshed ${new Date(lastFetched).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`}
           </p>
         </div>
@@ -162,8 +171,8 @@ export default function ResearchPage() {
                       />
                       <div className="absolute top-2 left-2">
                         <Badge
-                          variant={video.platform === 'tiktok' ? 'default' : 'default'}
-                          label={video.platform === 'tiktok' ? '🎵 TikTok' : '▶️ YouTube'}
+                          variant="default"
+                          label={platformBadge(video.platform)}
                         />
                       </div>
                     </div>
