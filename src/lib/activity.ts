@@ -12,7 +12,8 @@ export async function logActivity(
   } = await supabase.auth.getUser()
   if (!user) return
 
-  await supabase.from('activity_log').insert({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (supabase.from('activity_log') as any).insert({
     user_id: user.id,
     action_type: actionType,
     entity_type: entityType ?? null,

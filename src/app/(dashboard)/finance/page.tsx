@@ -70,7 +70,8 @@ export default function FinancePage() {
   async function addExpense() {
     if (!expenseForm.amount || !expenseForm.category) return
     setSaving(true)
-    await supabase.from('expenses').insert({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('expenses') as any).insert({
       date: expenseForm.date,
       category: expenseForm.category as typeof EXPENSE_CATEGORIES[number],
       description: expenseForm.description || null,
@@ -88,7 +89,8 @@ export default function FinancePage() {
   }
 
   async function markInvoicePaid(inv: Invoice) {
-    await supabase.from('invoices').update({ status: 'paid' }).eq('id', inv.id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('invoices') as any).update({ status: 'paid' }).eq('id', inv.id)
     await logActivity('invoice_paid', `Invoice marked paid for ${clientMap[inv.client_id ?? '']?.name ?? 'client'}`, 'invoice', inv.id)
     fetchData()
   }

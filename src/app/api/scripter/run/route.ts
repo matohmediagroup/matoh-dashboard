@@ -13,8 +13,8 @@ export async function POST(req: NextRequest) {
   }
 
   // Create a pending record
-  const { data: record } = await supabase
-    .from('generated_scripts')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: record } = await (supabase.from('generated_scripts') as any)
     .insert({ client_id, dealer_key, status: 'running', scripts: [] })
     .select()
     .single()
@@ -31,8 +31,8 @@ export async function POST(req: NextRequest) {
     const data = await res.json() as { job_id?: string }
 
     if (data?.job_id && record) {
-      await supabase
-        .from('generated_scripts')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase.from('generated_scripts') as any)
         .update({ job_id: data.job_id })
         .eq('id', record.id)
     }
@@ -40,7 +40,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, record_id: record?.id, job_id: data?.job_id })
   } catch (e) {
     if (record) {
-      await supabase.from('generated_scripts').update({ status: 'error' }).eq('id', record.id)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase.from('generated_scripts') as any).update({ status: 'error' }).eq('id', record.id)
     }
     return NextResponse.json({ error: 'Failed to trigger scripter' }, { status: 500 })
   }

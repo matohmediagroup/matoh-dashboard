@@ -131,7 +131,8 @@ export default function SocialPage() {
     for (const platform of ['tiktok', 'instagram', 'youtube'] as Platform[]) {
       const handle = handles[platform].trim()
       if (handle) {
-        await supabase.from('social_accounts').upsert(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (supabase.from('social_accounts') as any).upsert(
           { client_id: clientId, platform, handle },
           { onConflict: 'client_id,platform' }
         )

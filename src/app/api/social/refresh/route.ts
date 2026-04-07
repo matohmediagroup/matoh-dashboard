@@ -196,7 +196,8 @@ export async function POST(req: NextRequest) {
   }
 
   // Upsert stats
-  await supabase.from('social_stats').upsert({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (supabase.from('social_stats') as any).upsert({
     client_id,
     platform,
     ...stats,

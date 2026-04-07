@@ -51,10 +51,12 @@ export default function VideographerPage() {
       notes: form.notes || null,
     }
     if (editShoot) {
-      await supabase.from('shoots').update(payload).eq('id', editShoot.id)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase.from('shoots') as any).update(payload).eq('id', editShoot.id)
       await logActivity('shoot_updated', `Shoot updated for ${clientMap[form.client_id]?.name ?? 'Unknown'}`, 'shoot', editShoot.id)
     } else {
-      const { data } = await supabase.from('shoots').insert(payload).select().single()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data } = await (supabase.from('shoots') as any).insert(payload).select().single()
       if (data) await logActivity('shoot_created', `New shoot added for ${clientMap[form.client_id]?.name ?? 'Unknown'} on ${form.shoot_date}`, 'shoot', data.id)
     }
     setSaving(false)

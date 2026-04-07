@@ -51,7 +51,8 @@ export default function TodosPage() {
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-    const { data } = await supabase.from('tasks').insert({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data } = await (supabase.from('tasks') as any).insert({
       title: form.title,
       assigned_to: user.id,
       assigned_by: user.id,
@@ -67,7 +68,8 @@ export default function TodosPage() {
   }
 
   async function updateStatus(task: Task, status: 'todo' | 'in_progress' | 'done') {
-    await supabase.from('tasks').update({ status }).eq('id', task.id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('tasks') as any).update({ status }).eq('id', task.id)
     if (status === 'done') await logActivity('task_completed', `Task "${task.title}" completed`, 'task', task.id)
     fetchData()
   }

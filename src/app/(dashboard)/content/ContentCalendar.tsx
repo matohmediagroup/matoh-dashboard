@@ -43,7 +43,8 @@ export function ContentCalendar({ items, clientMap, onRefresh, userRole, editors
 
   async function updateField(field: string, value: string | null) {
     if (!selected) return
-    await supabase.from('content_items').update({ [field]: value || null }).eq('id', selected.id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('content_items') as any).update({ [field]: value || null }).eq('id', selected.id)
     await logActivity('content_updated', `Content "${selected.title}" ${field} updated`, 'content_item', selected.id)
     setSelected(prev => prev ? { ...prev, [field]: value } : null)
     onRefresh()

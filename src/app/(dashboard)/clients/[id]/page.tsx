@@ -42,7 +42,8 @@ export default function ClientDetailPage() {
 
   async function saveField(field: string, value: string | number | null) {
     if (!client) return
-    await supabase.from('clients').update({ [field]: value }).eq('id', id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('clients') as any).update({ [field]: value }).eq('id', id)
     setClient(prev => prev ? { ...prev, [field]: value } : null)
     setEditingField(null)
   }

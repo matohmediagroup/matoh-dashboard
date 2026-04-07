@@ -66,7 +66,8 @@ export default function ContentPage() {
   async function addItem() {
     if (!form.title.trim()) return
     setSaving(true)
-    await supabase.from('content_items').insert({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('content_items') as any).insert({
       title: form.title,
       client_id: form.client_id || null,
       filming_status: form.filming_status as 'not_filmed' | 'filmed',

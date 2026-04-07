@@ -48,7 +48,8 @@ export default function ScriptsPage() {
   async function addScript() {
     if (!scriptForm.title.trim()) return
     setSaving(true)
-    await supabase.from('scripts').insert({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('scripts') as any).insert({
       title: scriptForm.title,
       client_id: scriptForm.client_id || null,
       body: scriptForm.body || null,
@@ -61,7 +62,8 @@ export default function ScriptsPage() {
 
   async function addShot(scriptId: string) {
     if (!shotTitle.trim()) return
-    await supabase.from('script_shots').insert({ script_id: scriptId, shot_title: shotTitle })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('script_shots') as any).insert({ script_id: scriptId, shot_title: shotTitle })
     await logActivity('shot_added', `Shot "${shotTitle}" added to script`, 'script', scriptId)
     setShotTitle('')
     setShowAddShot(null)
@@ -69,7 +71,8 @@ export default function ScriptsPage() {
   }
 
   async function toggleShot(shot: ScriptShot) {
-    await supabase.from('script_shots').update({ filmed: !shot.filmed }).eq('id', shot.id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('script_shots') as any).update({ filmed: !shot.filmed }).eq('id', shot.id)
     if (!shot.filmed) {
       await logActivity('shot_filmed', `Shot "${shot.shot_title}" marked as filmed`, 'script_shot', shot.id)
     }

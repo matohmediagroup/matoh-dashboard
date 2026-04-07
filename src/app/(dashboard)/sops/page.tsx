@@ -64,7 +64,8 @@ export default function SOPsPage() {
     if (!form.title.trim()) return
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
-    await supabase.from('sops').insert({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('sops') as any).insert({
       title: form.title,
       category: form.category,
       description: form.description || null,

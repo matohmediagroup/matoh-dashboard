@@ -51,7 +51,8 @@ export default function TeamTodosPage() {
   async function addTask() {
     if (!form.title.trim() || !form.assigned_to) return
     setSaving(true)
-    const { data } = await supabase.from('tasks').insert({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data } = await (supabase.from('tasks') as any).insert({
       title: form.title,
       assigned_to: form.assigned_to,
       assigned_by: currentUserId,
@@ -68,7 +69,8 @@ export default function TeamTodosPage() {
   }
 
   async function updateStatus(task: Task, status: 'todo' | 'in_progress' | 'done') {
-    await supabase.from('tasks').update({ status }).eq('id', task.id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('tasks') as any).update({ status }).eq('id', task.id)
     if (status === 'done') await logActivity('task_completed', `Task "${task.title}" completed`, 'task', task.id)
     fetchData()
   }

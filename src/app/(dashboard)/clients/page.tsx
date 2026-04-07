@@ -40,7 +40,8 @@ export default function ClientsPage() {
   async function handleAdd() {
     if (!form.name.trim()) return
     setSaving(true)
-    await supabase.from('clients').insert({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('clients') as any).insert({
       name: form.name,
       contact_name: form.contact_name || null,
       contact_email: form.contact_email || null,

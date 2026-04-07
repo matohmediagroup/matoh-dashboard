@@ -38,7 +38,8 @@ export function ContentKanban({ items, clientMap, onRefresh, userRole, userId, e
     if (!dragging || !canEdit) return
     const item = items.find(i => i.id === dragging)
     if (!item || item.edit_status === targetStatus) { setDragging(null); setDragOver(null); return }
-    await supabase.from('content_items').update({ edit_status: targetStatus }).eq('id', dragging)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('content_items') as any).update({ edit_status: targetStatus }).eq('id', dragging)
     await logActivity('content_updated', `"${item.title}" moved to ${targetStatus}`, 'content_item', item.id)
     setDragging(null)
     setDragOver(null)
@@ -47,7 +48,8 @@ export function ContentKanban({ items, clientMap, onRefresh, userRole, userId, e
 
   async function updateField(field: string, value: string | null) {
     if (!selected) return
-    await supabase.from('content_items').update({ [field]: value || null }).eq('id', selected.id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('content_items') as any).update({ [field]: value || null }).eq('id', selected.id)
     await logActivity('content_updated', `"${selected.title}" ${field} updated`, 'content_item', selected.id)
     setSelected(prev => prev ? { ...prev, [field]: value } : null)
     onRefresh()

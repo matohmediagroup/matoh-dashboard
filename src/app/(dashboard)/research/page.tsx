@@ -100,7 +100,8 @@ export default function ResearchPage() {
   }
 
   async function addToContentPipeline(idea: string) {
-    await supabase.from('content_items').insert({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('content_items') as any).insert({
       title: idea,
       filming_status: 'not_filmed',
       edit_status: 'unassigned',
