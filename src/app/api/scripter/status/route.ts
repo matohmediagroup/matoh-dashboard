@@ -17,22 +17,25 @@ export async function GET(req: NextRequest) {
 
   try {
     const res = await fetch(`${SCRIPTER_URL}/job/${job_id}`)
-    const data = await res.json() as { status?: string; scripts?: object[] }
+    const rawText = await res.text()
+    let data: { status?: string; scripts?: object[]; logs?: string[]; error?: string; progress?: string } = {}
+    try { data = JSON.parse(rawText) } catch { /* not JSON */ }
 
     if (data?.status === 'done' && data?.scripts?.length) {
-      await supabase
-        .from('generated_scripts')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase.from('generated_scripts') as any)
         .update({ status: 'done', scripts: data.scripts })
         .eq('id', record_id)
     } else if (data?.status === 'error') {
-      await supabase
-        .from('generated_scripts')
-        .update({ status: 'error' })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase.from('generated_scripts') as any)
+        .update({ status: 'error', scripts: [{ _debug: rawText }] })
         .eq('id', record_id)
     }
 
-    return NextResponse.json(data)
-  } catch {
-    return NextResponse.json({ error: 'Failed to poll job' }, { status: 500 })
+    return NextResponse.json({ ...data, _raw: rawText, _http_status: res.status })
+  } catch (e) {
+    const errMsg = e instanceof Error ? e.message : String(e)
+    return NextResponse.json({ error: errMsg, status: 'error' }, { status: 500 })
   }
 }
