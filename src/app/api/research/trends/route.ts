@@ -1,4 +1,5 @@
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60 // seconds — Vercel hobby max
 
 import { NextResponse } from 'next/server'
 
@@ -80,6 +81,18 @@ async function fetchYouTubeShorts(handle: string, label: string) {
   }
 }
 
+async function pollApifyRun(runId: string, maxWaitMs = 45000): Promise<string | null> {
+  const start = Date.now()
+  while (Date.now() - start < maxWaitMs) {
+    await new Promise(r => setTimeout(r, 3000))
+    const statusRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`)
+    const statusData = await statusRes.json() as { data?: { status?: string; defaultDatasetId?: string } }
+    if (statusData?.data?.status === 'SUCCEEDED') return statusData.data.defaultDatasetId || null
+    if (statusData?.data?.status === 'FAILED' || statusData?.data?.status === 'ABORTED') return null
+  }
+  return null
+}
+
 async function fetchTikTokTopVideos(handle: string, label: string) {
   try {
     const startRes = await fetch(
@@ -94,34 +107,22 @@ async function fetchTikTokTopVideos(handle: string, label: string) {
     const runId = startData?.data?.id
     if (!runId) return []
 
-    for (let i = 0; i < 20; i++) {
-      await new Promise(r => setTimeout(r, 3000))
-      const statusRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`)
-      const statusData = await statusRes.json() as { data?: { status?: string; defaultDatasetId?: string } }
-      if (statusData?.data?.status === 'SUCCEEDED') {
-        const itemsRes = await fetch(
-          `https://api.apify.com/v2/datasets/${statusData.data.defaultDatasetId}/items?token=${APIFY_TOKEN}&limit=5`
-        )
-        const items = await itemsRes.json() as any[]
-        return items.map((v: any) => ({
-          handle,
-          label,
-          platform: 'tiktok' as const,
-          title: v.text || v.desc || '',
-          views: v.playCount || 0,
-          likes: v.diggCount || 0,
-          comments: v.commentCount || 0,
-          url: v.webVideoUrl || '',
-          thumbnail: v.video?.cover || '',
-          date: v.createTime ? new Date(v.createTime * 1000).toISOString() : '',
-        }))
-      }
-      if (statusData?.data?.status === 'FAILED') return []
-    }
-    return []
-  } catch {
-    return []
-  }
+    const datasetId = await pollApifyRun(runId)
+    if (!datasetId) return []
+
+    const itemsRes = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_TOKEN}&limit=5`)
+    const items = await itemsRes.json() as any[]
+    return items.map((v: any) => ({
+      handle, label, platform: 'tiktok' as const,
+      title: v.text || v.desc || '',
+      views: v.playCount || 0,
+      likes: v.diggCount || 0,
+      comments: v.commentCount || 0,
+      url: v.webVideoUrl || '',
+      thumbnail: v.video?.cover || '',
+      date: v.createTime ? new Date(v.createTime * 1000).toISOString() : '',
+    }))
+  } catch { return [] }
 }
 
 async function fetchInstagramReels(handle: string, label: string) {
@@ -143,36 +144,24 @@ async function fetchInstagramReels(handle: string, label: string) {
     const runId = startData?.data?.id
     if (!runId) return []
 
-    for (let i = 0; i < 20; i++) {
-      await new Promise(r => setTimeout(r, 3000))
-      const statusRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`)
-      const statusData = await statusRes.json() as { data?: { status?: string; defaultDatasetId?: string } }
-      if (statusData?.data?.status === 'SUCCEEDED') {
-        const itemsRes = await fetch(
-          `https://api.apify.com/v2/datasets/${statusData.data.defaultDatasetId}/items?token=${APIFY_TOKEN}&limit=5`
-        )
-        const items = await itemsRes.json() as any[]
-        return items
-          .filter((v: any) => v.type === 'Video' || v.productType === 'clips')
-          .map((v: any) => ({
-            handle,
-            label,
-            platform: 'instagram' as const,
-            title: v.caption || v.alt || '',
-            views: v.videoPlayCount || v.likesCount || 0,
-            likes: v.likesCount || 0,
-            comments: v.commentsCount || 0,
-            url: v.url || `https://instagram.com/p/${v.shortCode}`,
-            thumbnail: v.displayUrl || v.thumbnailUrl || '',
-            date: v.timestamp || '',
-          }))
-      }
-      if (statusData?.data?.status === 'FAILED') return []
-    }
-    return []
-  } catch {
-    return []
-  }
+    const datasetId = await pollApifyRun(runId)
+    if (!datasetId) return []
+
+    const itemsRes = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_TOKEN}&limit=5`)
+    const items = await itemsRes.json() as any[]
+    return items
+      .filter((v: any) => v.type === 'Video' || v.productType === 'clips')
+      .map((v: any) => ({
+        handle, label, platform: 'instagram' as const,
+        title: v.caption || v.alt || '',
+        views: v.videoPlayCount || v.likesCount || 0,
+        likes: v.likesCount || 0,
+        comments: v.commentsCount || 0,
+        url: v.url || `https://instagram.com/p/${v.shortCode}`,
+        thumbnail: v.displayUrl || v.thumbnailUrl || '',
+        date: v.timestamp || '',
+      }))
+  } catch { return [] }
 }
 
 export async function GET() {
