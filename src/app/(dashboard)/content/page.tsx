@@ -73,6 +73,8 @@ export default function ContentPage() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [showAdd, setShowAdd] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [filterPosted, setFilterPosted] = useState<'all' | 'posted' | 'unposted'>('all')
+  const [filterClient, setFilterClient] = useState('all')
   const [form, setForm] = useState({
     title: '', client_id: '', filming_status: 'not_filmed',
     edit_status: 'unassigned', assigned_editor_id: '', posted_date: '',
@@ -129,11 +131,21 @@ export default function ContentPage() {
 
   if (loading) return <PageSpinner />
 
+  // Apply filters
+  const filteredItems = items.filter(item => {
+    const postedMatch =
+      filterPosted === 'all' ? true :
+      filterPosted === 'posted' ? item.filming_status === 'filmed' :
+      item.filming_status !== 'filmed'
+    const clientMatch = filterClient === 'all' || item.client_id === filterClient
+    return postedMatch && clientMatch
+  })
+
   // Group by client
-  const noClient = items.filter(i => !i.client_id)
+  const noClient = filteredItems.filter(i => !i.client_id)
   const byClient = clients.map(c => ({
     client: c,
-    items: items.filter(i => i.client_id === c.id),
+    items: filteredItems.filter(i => i.client_id === c.id),
   })).filter(g => g.items.length > 0)
 
   const canEdit = userRole === 'owner' || userRole === 'manager'
@@ -277,11 +289,38 @@ export default function ContentPage() {
       <div className="flex items-center justify-between px-4 py-4 border-b border-[#2e2e2e] flex-shrink-0">
         <div>
           <h1 className="text-xl font-semibold text-[#e8e8e8]">Content Dashboard</h1>
-          <p className="text-xs text-[#888] mt-0.5">{items.length} videos · {clients.length} clients</p>
+          <p className="text-xs text-[#888] mt-0.5">{filteredItems.length} videos · {clients.length} clients</p>
         </div>
-        {canEdit && (
-          <Button onClick={() => setShowAdd(true)}><Plus size={14} /> Add Video</Button>
-        )}
+        <div className="flex items-center gap-2">
+          {/* Client filter */}
+          <select
+            value={filterClient}
+            onChange={e => setFilterClient(e.target.value)}
+            className="px-3 py-1.5 rounded-card bg-[#191919] border border-[#2e2e2e] text-[#888] text-xs focus:outline-none"
+          >
+            <option value="all">All Clients</option>
+            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          {/* Posted filter */}
+          <div className="flex items-center gap-0.5 bg-[#191919] border border-[#2e2e2e] rounded-card p-0.5">
+            {(['all', 'unposted', 'posted'] as const).map(f => (
+              <button
+                key={f}
+                onClick={() => setFilterPosted(f)}
+                className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                  filterPosted === f
+                    ? 'bg-[#2e2e2e] text-[#e8e8e8]'
+                    : 'text-[#555] hover:text-[#888]'
+                }`}
+              >
+                {f === 'all' ? 'All' : f === 'unposted' ? 'Unposted' : 'Posted'}
+              </button>
+            ))}
+          </div>
+          {canEdit && (
+            <Button onClick={() => setShowAdd(true)}><Plus size={14} /> Add Video</Button>
+          )}
+        </div>
       </div>
 
       {/* Groups */}
@@ -290,8 +329,10 @@ export default function ContentPage() {
         {byClient.map(({ client, items: groupItems }) =>
           renderGroup(client.name, client.color, groupItems, client.id)
         )}
-        {items.length === 0 && (
-          <div className="text-center py-20 text-[#555] text-sm">No videos yet — add your first one</div>
+        {filteredItems.length === 0 && (
+          <div className="text-center py-20 text-[#555] text-sm">
+            {items.length === 0 ? 'No videos yet — add your first one' : 'No videos match the current filter'}
+          </div>
         )}
       </div>
 
