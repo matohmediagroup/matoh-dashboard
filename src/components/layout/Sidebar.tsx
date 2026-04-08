@@ -14,10 +14,11 @@ import {
   LogOut,
   ChevronLeft,
   BarChart2,
-  Tv2,
   FlaskConical,
   BookOpen,
   TrendingUp,
+  Clapperboard,
+  TableProperties,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Role } from '@/types/database'
@@ -46,8 +47,14 @@ const NAV_ITEMS: NavItem[] = [
     roles: ['owner', 'manager'],
   },
   {
-    label: 'Content Schedule',
+    label: 'Content Board',
     href: '/content',
+    icon: Clapperboard,
+    roles: ['owner', 'manager', 'editor'],
+  },
+  {
+    label: 'Post Schedule',
+    href: '/schedule',
     icon: CalendarDays,
     roles: ['owner', 'manager', 'editor'],
   },
