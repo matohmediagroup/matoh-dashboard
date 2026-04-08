@@ -55,10 +55,26 @@ export function ContentKanban({ items, clientMap, onRefresh, userRole, userId, e
     onRefresh()
   }
 
+  // Get unique clients that appear in the items
+  const activeClients = Object.values(clientMap).filter(c =>
+    items.some(i => i.client_id === c.id)
+  )
+
   return (
     <div className="flex h-full overflow-hidden">
-      <div className="flex-1 overflow-x-auto">
-        <div className="flex gap-3 h-full p-4 min-w-max">
+      <div className="flex-1 overflow-x-auto flex flex-col">
+        {/* Color legend */}
+        {activeClients.length > 0 && (
+          <div className="flex flex-wrap gap-2 px-4 pt-3 pb-1 flex-shrink-0">
+            {activeClients.map(c => (
+              <div key={c.id} className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: c.color }} />
+                <span className="text-[10px] text-[#888]">{c.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-3 flex-1 overflow-hidden p-4 min-w-max">
           {COLUMNS.map(col => {
             const colItems = items.filter(i => i.edit_status === col.id)
             const isOver = dragOver === col.id
@@ -86,6 +102,7 @@ export function ContentKanban({ items, clientMap, onRefresh, userRole, userId, e
                         onDragEnd={() => { setDragging(null); setDragOver(null) }}
                         onClick={() => setSelected(item)}
                         className={`bg-[#202020] border border-[#2e2e2e] rounded-card p-3 cursor-pointer hover:border-[#3a3a3a] transition-all select-none ${dragging === item.id ? 'opacity-40' : ''}`}
+                        style={{ borderLeft: `3px solid ${client?.color || '#2e2e2e'}` }}
                       >
                         <p className="text-sm font-medium text-[#e8e8e8] mb-2 leading-snug">{item.title}</p>
                         <div className="flex flex-wrap gap-1 mb-2">
