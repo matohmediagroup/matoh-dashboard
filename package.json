@@ -21,7 +21,8 @@
     "recharts": "^2.12.7",
     "lucide-react": "^0.400.0",
     "clsx": "^2.1.1",
-    "tailwind-merge": "^2.4.0"
+    "tailwind-merge": "^2.4.0",
+    "pdf-parse": "^1.1.1"
   },
   "devDependencies": {
     "typescript": "^5.5.3",
@@ -33,6 +34,7 @@
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.39",
     "eslint": "^8.57.0",
-    "eslint-config-next": "14.2.5"
+    "eslint-config-next": "14.2.5",
+    "@types/pdf-parse": "^1.1.4"
   }
 }
