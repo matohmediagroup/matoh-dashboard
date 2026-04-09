@@ -4,10 +4,7 @@ export const maxDuration = 60
 import { NextResponse } from 'next/server'
 
 const YOUTUBE_KEY = process.env.YOUTUBE_API_KEY!
-const IG_USER     = process.env.INSTAGRAM_USERNAME!
-const IG_PASS     = process.env.INSTAGRAM_PASSWORD!
-
-const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+const APIFY_TOKEN = process.env.APIFY_API_TOKEN!
 
 const YOUTUBE_COMPETITORS = [
   { handle: 'supercarblondie', label: 'Supercar Blondie' },
@@ -33,7 +30,19 @@ const INSTAGRAM_COMPETITORS = [
   { handle: 'throtl',          label: 'Throtl' },
 ]
 
-// ─── YouTube Shorts ───────────────────────────────────────────────────────────
+async function pollApifyRun(runId: string, maxWaitMs = 45000): Promise<string | null> {
+  const start = Date.now()
+  while (Date.now() - start < maxWaitMs) {
+    await new Promise(r => setTimeout(r, 3000))
+    const res = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`)
+    const d = await res.json() as { data?: { status?: string; defaultDatasetId?: string } }
+    if (d?.data?.status === 'SUCCEEDED') return d.data.defaultDatasetId || null
+    if (d?.data?.status === 'FAILED' || d?.data?.status === 'ABORTED') return null
+  }
+  return null
+}
+
+// ── YouTube Shorts ──────────────────────────────────────────────────────────
 
 async function fetchYouTubeShorts(handle: string, label: string) {
   try {
@@ -76,201 +85,81 @@ async function fetchYouTubeShorts(handle: string, label: string) {
   } catch { return [] }
 }
 
-// ─── TikTok (direct page scrape — no Apify) ──────────────────────────────────
+// ── TikTok (Apify) ───────────────────────────────────────────────────────────
 
 async function fetchTikTokTopVideos(handle: string, label: string) {
   try {
-    const res = await fetch(`https://www.tiktok.com/@${handle}`, {
-      headers: {
-        'User-Agent': UA,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Cache-Control': 'no-cache',
-      },
-    })
-    const html = await res.text()
+    const startRes = await fetch(
+      `https://api.apify.com/v2/acts/clockworks~free-tiktok-scraper/runs?token=${APIFY_TOKEN}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profiles: [handle], resultsPerPage: 5, shouldDownloadVideos: false }),
+      }
+    )
+    const startData = await startRes.json() as { data?: { id?: string } }
+    const runId = startData?.data?.id
+    if (!runId) return []
 
-    // TikTok embeds data in __UNIVERSAL_DATA_FOR_REHYDRATION__ script tag
-    const match = html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/)
-    if (!match) {
-      // Fallback: try older SIGI_STATE format
-      const sigiMatch = html.match(/window\['SIGI_STATE'\]\s*=\s*(\{[\s\S]*?\});\s*window\[/)
-      if (!sigiMatch) return []
-      const sigiData = JSON.parse(sigiMatch[1])
-      const itemModule = sigiData?.ItemModule || {}
-      return Object.values(itemModule).slice(0, 5).map((v: any) => ({
-        handle, label, platform: 'tiktok' as const,
-        title: v.desc || '',
-        views: v.stats?.playCount || 0,
-        likes: v.stats?.diggCount || 0,
-        comments: v.stats?.commentCount || 0,
-        url: `https://www.tiktok.com/@${handle}/video/${v.id}`,
-        thumbnail: v.video?.cover || '',
-        date: v.createTime ? new Date(v.createTime * 1000).toISOString() : '',
-      }))
-    }
+    const datasetId = await pollApifyRun(runId)
+    if (!datasetId) return []
 
-    const data = JSON.parse(match[1])
-    const scope = data['__DEFAULT_SCOPE__'] || {}
+    const itemsRes = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_TOKEN}&limit=5`)
+    const items = await itemsRes.json() as any[]
+    return items.map((v: any) => ({
+      handle, label, platform: 'tiktok' as const,
+      title: v.text || v.desc || '',
+      views: v.playCount || 0,
+      likes: v.diggCount || 0,
+      comments: v.commentCount || 0,
+      url: v.webVideoUrl || '',
+      thumbnail: v.video?.cover || '',
+      date: v.createTime ? new Date(v.createTime * 1000).toISOString() : '',
+    }))
+  } catch { return [] }
+}
 
-    // Try different known paths for video list
-    const itemList: any[] =
-      scope['webapp.video-list']?.itemList ||
-      scope['webapp.userPost']?.statusList ||
-      scope['webapp.user-post']?.itemList ||
-      []
+// ── Instagram (Apify) ────────────────────────────────────────────────────────
 
-    if (itemList.length === 0) return []
+async function fetchInstagramReels(handle: string, label: string) {
+  try {
+    const startRes = await fetch(
+      `https://api.apify.com/v2/acts/apify~instagram-scraper/runs?token=${APIFY_TOKEN}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          directUrls: [`https://www.instagram.com/${handle}/reels/`],
+          resultsType: 'posts',
+          resultsLimit: 5,
+        }),
+      }
+    )
+    const startData = await startRes.json() as { data?: { id?: string } }
+    const runId = startData?.data?.id
+    if (!runId) return []
 
-    // Sort by playCount descending, take top 5
-    return itemList
-      .sort((a: any, b: any) => (b.stats?.playCount || 0) - (a.stats?.playCount || 0))
-      .slice(0, 5)
+    const datasetId = await pollApifyRun(runId)
+    if (!datasetId) return []
+
+    const itemsRes = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_TOKEN}&limit=5`)
+    const items = await itemsRes.json() as any[]
+    return items
+      .filter((v: any) => v.type === 'Video' || v.productType === 'clips')
       .map((v: any) => ({
-        handle, label, platform: 'tiktok' as const,
-        title: v.desc || '',
-        views: v.stats?.playCount || 0,
-        likes: v.stats?.diggCount || 0,
-        comments: v.stats?.commentCount || 0,
-        url: `https://www.tiktok.com/@${handle}/video/${v.id}`,
-        thumbnail: v.video?.cover || v.video?.originCover || '',
-        date: v.createTime ? new Date(v.createTime * 1000).toISOString() : '',
+        handle, label, platform: 'instagram' as const,
+        title: v.caption || v.alt || '',
+        views: v.videoPlayCount || v.likesCount || 0,
+        likes: v.likesCount || 0,
+        comments: v.commentsCount || 0,
+        url: v.url || `https://instagram.com/p/${v.shortCode}`,
+        thumbnail: v.displayUrl || '',
+        date: v.timestamp || '',
       }))
   } catch { return [] }
 }
 
-// ─── Instagram (session-based — no Apify) ────────────────────────────────────
-
-// Module-level session cache (lives for the duration of the serverless instance)
-let _igSession: string | null = null
-let _igSessionTs = 0
-
-async function getInstagramSession(): Promise<string | null> {
-  // Re-use cached session for up to 55 minutes
-  if (_igSession && Date.now() - _igSessionTs < 55 * 60 * 1000) return _igSession
-
-  if (!IG_USER || !IG_PASS) return null
-
-  try {
-    // Step 1: get CSRF token from homepage
-    const initRes = await fetch('https://www.instagram.com/', {
-      headers: { 'User-Agent': UA, 'Accept-Language': 'en-US,en;q=0.9' },
-    })
-    const initCookies = initRes.headers.get('set-cookie') || ''
-    const csrfMatch = initCookies.match(/csrftoken=([^;,\s]+)/)
-    if (!csrfMatch) return null
-    const csrf = csrfMatch[1]
-
-    // Step 2: login
-    const encPassword = `#PWD_INSTAGRAM_BROWSER:0:${Math.floor(Date.now() / 1000)}:${IG_PASS}`
-    const loginRes = await fetch('https://www.instagram.com/accounts/login/ajax/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': UA,
-        'X-CSRFToken': csrf,
-        'X-Instagram-AJAX': '1',
-        'X-Requested-With': 'XMLHttpRequest',
-        'Referer': 'https://www.instagram.com/',
-        'Cookie': `csrftoken=${csrf}; ig_did=${randomHex(16)}`,
-      },
-      body: new URLSearchParams({
-        username: IG_USER,
-        enc_password: encPassword,
-        queryParams: '{}',
-        optIntoOneTap: 'false',
-        stopDeletionNonce: '',
-        trustedDeviceRecords: '{}',
-      }).toString(),
-    })
-
-    const loginSetCookie = loginRes.headers.get('set-cookie') || ''
-    const sessionMatch = loginSetCookie.match(/sessionid=([^;,\s]+)/)
-    if (sessionMatch) {
-      _igSession = sessionMatch[1]
-      _igSessionTs = Date.now()
-      return _igSession
-    }
-
-    // Log reason if not authenticated
-    try {
-      const body = await loginRes.text()
-      console.warn('[IG login failed]', loginRes.status, body.slice(0, 300))
-    } catch { /* ignore */ }
-    return null
-  } catch (e) {
-    console.warn('[IG session error]', e)
-    return null
-  }
-}
-
-function randomHex(len: number) {
-  return Array.from({ length: len }, () => Math.floor(Math.random() * 16).toString(16)).join('')
-}
-
-async function fetchInstagramReels(handle: string, label: string) {
-  try {
-    const sessionId = await getInstagramSession()
-    if (!sessionId) return []
-
-    const igHeaders: Record<string, string> = {
-      'User-Agent': UA,
-      'Cookie': `sessionid=${sessionId}`,
-      'X-IG-App-ID': '936619743392459',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Referer': `https://www.instagram.com/${handle}/`,
-    }
-
-    // Step 1: get numeric user ID from profile
-    const profileRes = await fetch(
-      `https://www.instagram.com/api/v1/users/web_profile_info/?username=${handle}`,
-      { headers: igHeaders }
-    )
-    const profileData = await profileRes.json() as any
-    const userId: string = profileData?.data?.user?.id
-    if (!userId) return []
-
-    // Step 2: fetch reels
-    const reelsRes = await fetch('https://www.instagram.com/api/v1/clips/user/', {
-      method: 'POST',
-      headers: {
-        ...igHeaders,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        target_user_id: userId,
-        page_size: '12',
-        max_id: '',
-        include_feed_video: 'true',
-      }).toString(),
-    })
-    const reelsData = await reelsRes.json() as any
-    const items: any[] = reelsData?.items || []
-
-    return items
-      .sort((a: any, b: any) => (b.media?.play_count || 0) - (a.media?.play_count || 0))
-      .slice(0, 5)
-      .map((item: any) => {
-        const v = item.media || item
-        return {
-          handle, label, platform: 'instagram' as const,
-          title: v.caption?.text || '',
-          views: v.play_count || v.view_count || v.like_count || 0,
-          likes: v.like_count || 0,
-          comments: v.comment_count || 0,
-          url: `https://www.instagram.com/p/${v.code || v.shortcode}/`,
-          thumbnail: v.image_versions2?.candidates?.[0]?.url || v.carousel_media?.[0]?.image_versions2?.candidates?.[0]?.url || '',
-          date: v.taken_at ? new Date(v.taken_at * 1000).toISOString() : '',
-        }
-      })
-  } catch (e) {
-    console.warn(`[IG reels error] @${handle}:`, e)
-    return []
-  }
-}
-
-// ─── Main handler ─────────────────────────────────────────────────────────────
+// ── Handler ──────────────────────────────────────────────────────────────────
 
 export async function GET() {
   const results = await Promise.all([
