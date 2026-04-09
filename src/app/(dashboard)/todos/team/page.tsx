@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Plus, Check, Clock, Circle } from 'lucide-react'
+import { Plus, Check, Clock, Circle, Film, AlertCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -10,18 +10,25 @@ import { Badge } from '@/components/ui/Badge'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { logActivity } from '@/lib/activity'
 import { formatDate } from '@/lib/utils'
-import type { Task, Profile } from '@/types/database'
+import type { Task, Profile, ContentItem, Client } from '@/types/database'
 
-type TaskWithProfiles = Task & { assignee?: Profile; assigner?: Profile }
+const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
+  unassigned:  { bg: '#3a3a3a', color: '#888',    label: 'Not Started' },
+  in_progress: { bg: '#1e3a5f', color: '#4f8ef7', label: 'In Progress' },
+  revisions:   { bg: '#3d2e00', color: '#f59e0b', label: 'Revisions' },
+  done:        { bg: '#0d3d2a', color: '#10b981', label: 'Done' },
+}
 
 export default function TeamTodosPage() {
   const supabase = createClient()
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [profiles, setProfiles] = useState<Profile[]>([])
-  const [loading, setLoading] = useState(true)
+  const [tasks, setTasks]         = useState<Task[]>([])
+  const [profiles, setProfiles]   = useState<Profile[]>([])
+  const [contentItems, setContentItems] = useState<ContentItem[]>([])
+  const [clients, setClients]     = useState<Client[]>([])
+  const [loading, setLoading]     = useState(true)
   const [selectedMember, setSelectedMember] = useState<string>('all')
-  const [showAdd, setShowAdd] = useState(false)
-  const [saving, setSaving] = useState(false)
+  const [showAdd, setShowAdd]     = useState(false)
+  const [saving, setSaving]       = useState(false)
   const [currentUserId, setCurrentUserId] = useState('')
   const [form, setForm] = useState({ title: '', assigned_to: '', due_date: '', notes: '', status: 'todo' })
 
@@ -29,12 +36,17 @@ export default function TeamTodosPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
     setCurrentUserId(user.id)
-    const [{ data: tasksData }, { data: profilesData }] = await Promise.all([
+
+    const [{ data: tasksData }, { data: profilesData }, { data: contentData }, { data: clientsData }] = await Promise.all([
       supabase.from('tasks').select('*').order('due_date', { nullsFirst: false }),
       supabase.from('profiles').select('*').order('full_name'),
+      supabase.from('content_items').select('*').not('assigned_editor_id', 'is', null).neq('edit_status', 'done'),
+      supabase.from('clients').select('*'),
     ])
     setTasks(tasksData ?? [])
     setProfiles(profilesData ?? [])
+    setContentItems(contentData ?? [])
+    setClients(clientsData ?? [])
     setLoading(false)
   }, [])
 
@@ -47,6 +59,7 @@ export default function TeamTodosPage() {
   }, [fetchData])
 
   const profileMap = Object.fromEntries(profiles.map(p => [p.id, p]))
+  const clientMap  = Object.fromEntries(clients.map(c => [c.id, c]))
 
   async function addTask() {
     if (!form.title.trim() || !form.assigned_to) return
@@ -77,8 +90,23 @@ export default function TeamTodosPage() {
 
   if (loading) return <PageSpinner />
 
-  const memberTasks = selectedMember === 'all' ? tasks : tasks.filter(t => t.assigned_to === selectedMember)
   const members = profiles
+
+  // Filter tasks + content for selected member
+  const memberTasks = selectedMember === 'all'
+    ? tasks
+    : tasks.filter(t => t.assigned_to === selectedMember)
+
+  const memberContent = selectedMember === 'all'
+    ? contentItems
+    : contentItems.filter(c => c.assigned_editor_id === selectedMember)
+
+  // Pending task count per member (for sidebar badges)
+  function pendingCount(memberId: string) {
+    const taskCount = tasks.filter(t => t.assigned_to === memberId && t.status !== 'done').length
+    const contentCount = contentItems.filter(c => c.assigned_editor_id === memberId).length
+    return taskCount + contentCount
+  }
 
   const StatusIcon = ({ status }: { status: string }) => {
     if (status === 'done') return <Check size={14} className="text-[#10b981]" />
@@ -86,52 +114,64 @@ export default function TeamTodosPage() {
     return <Circle size={14} className="text-[#888]" />
   }
 
+  const selectedName = selectedMember === 'all' ? 'All Members' : profileMap[selectedMember]?.full_name ?? ''
+
   return (
     <div className="flex h-full">
-      {/* Member sidebar */}
-      <div className="w-52 border-r border-[#2e2e2e] bg-[#202020] flex-shrink-0 overflow-y-auto">
+
+      {/* ── Member sidebar ── */}
+      <div className="w-52 border-r border-[#2e2e2e] bg-[#1a1a1a] flex-shrink-0 overflow-y-auto">
         <div className="p-3 border-b border-[#2e2e2e]">
-          <p className="text-xs font-semibold text-[#888] uppercase tracking-wide">Team</p>
+          <p className="text-xs font-semibold text-[#555] uppercase tracking-wide">Team</p>
         </div>
         <nav className="p-2 space-y-0.5">
           <button
             onClick={() => setSelectedMember('all')}
-            className={`w-full text-left px-3 py-2 rounded-card text-sm transition-colors ${selectedMember === 'all' ? 'bg-[#4f8ef7]/15 text-[#4f8ef7]' : 'text-[#888] hover:text-[#e8e8e8] hover:bg-[#252525]'}`}
+            className={`w-full text-left px-3 py-2 rounded-card text-sm transition-colors flex items-center justify-between ${selectedMember === 'all' ? 'bg-[#4f8ef7]/15 text-[#4f8ef7]' : 'text-[#888] hover:text-[#e8e8e8] hover:bg-[#252525]'}`}
           >
-            All Members
-            <span className="ml-2 text-xs text-[#555]">{tasks.length}</span>
+            <span>All Members</span>
+            <span className="text-xs text-[#555]">{tasks.filter(t => t.status !== 'done').length + contentItems.length}</span>
           </button>
           {members.map(p => {
-            const count = tasks.filter(t => t.assigned_to === p.id && t.status !== 'done').length
+            const count = pendingCount(p.id)
             return (
               <button key={p.id} onClick={() => setSelectedMember(p.id)}
                 className={`w-full text-left px-3 py-2 rounded-card text-sm transition-colors flex items-center justify-between ${selectedMember === p.id ? 'bg-[#4f8ef7]/15 text-[#4f8ef7]' : 'text-[#888] hover:text-[#e8e8e8] hover:bg-[#252525]'}`}>
-                <span className="truncate">{p.full_name.split(' ')[0]}</span>
-                {count > 0 && <span className="text-xs bg-[#2e2e2e] px-1.5 py-0.5 rounded-chip flex-shrink-0">{count}</span>}
+                <div className="min-w-0">
+                  <p className="truncate">{p.full_name.split(' ')[0]}</p>
+                  <p className="text-[10px] text-[#555] truncate capitalize">{p.role}</p>
+                </div>
+                {count > 0 && (
+                  <span className="text-[10px] bg-[#2e2e2e] px-1.5 py-0.5 rounded-chip flex-shrink-0 ml-1">{count}</span>
+                )}
               </button>
             )
           })}
         </nav>
       </div>
 
-      {/* Task list */}
+      {/* ── Main content ── */}
       <div className="flex-1 overflow-y-auto p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-xl font-semibold text-[#e8e8e8]">
-            {selectedMember === 'all' ? 'All Tasks' : profileMap[selectedMember]?.full_name}
-          </h1>
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h1 className="text-xl font-semibold text-[#e8e8e8]">{selectedName}</h1>
+            {selectedMember !== 'all' && profileMap[selectedMember] && (
+              <p className="text-xs text-[#555] mt-0.5 capitalize">{profileMap[selectedMember].role}</p>
+            )}
+          </div>
           <Button onClick={() => { setForm(p => ({ ...p, assigned_to: selectedMember === 'all' ? '' : selectedMember })); setShowAdd(true) }}>
-            <Plus size={16} /> Assign Task
+            <Plus size={14} /> Assign Task
           </Button>
         </div>
 
-        {/* Summary stats when viewing all */}
+        {/* ── Summary stats (all members view) ── */}
         {selectedMember === 'all' && (
-          <div className="grid grid-cols-3 gap-3 mb-6">
+          <div className="grid grid-cols-4 gap-3 mb-6">
             {[
-              { label: 'To Do', count: tasks.filter(t => t.status === 'todo').length, color: '#888' },
-              { label: 'In Progress', count: tasks.filter(t => t.status === 'in_progress').length, color: '#4f8ef7' },
-              { label: 'Done', count: tasks.filter(t => t.status === 'done').length, color: '#10b981' },
+              { label: 'Tasks To Do',    count: tasks.filter(t => t.status === 'todo').length,        color: '#888' },
+              { label: 'In Progress',    count: tasks.filter(t => t.status === 'in_progress').length, color: '#4f8ef7' },
+              { label: 'Tasks Done',     count: tasks.filter(t => t.status === 'done').length,        color: '#10b981' },
+              { label: 'Videos Editing', count: contentItems.length,                                   color: '#a855f7' },
             ].map(({ label, count, color }) => (
               <div key={label} className="bg-[#202020] border border-[#2e2e2e] rounded-card p-4">
                 <p className="text-xs text-[#888] mb-1">{label}</p>
@@ -141,58 +181,113 @@ export default function TeamTodosPage() {
           </div>
         )}
 
-        <div className="space-y-2">
-          {memberTasks.length === 0 ? (
-            <div className="text-center py-12 text-[#888] text-sm">No tasks.</div>
-          ) : memberTasks.map(task => {
-            const assignee = profileMap[task.assigned_to]
-            return (
-              <div key={task.id} className={`bg-[#202020] border border-[#2e2e2e] rounded-card p-4 flex items-start gap-3 ${task.status === 'done' ? 'opacity-60' : ''}`}>
-                <button
-                  onClick={() => {
-                    const next = task.status === 'todo' ? 'in_progress' : task.status === 'in_progress' ? 'done' : 'todo'
-                    updateStatus(task, next)
-                  }}
-                  className="mt-0.5 flex-shrink-0 w-5 h-5 rounded-chip border border-[#2e2e2e] flex items-center justify-center hover:border-[#4f8ef7] transition-colors"
-                >
-                  <StatusIcon status={task.status} />
-                </button>
-                <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-medium ${task.status === 'done' ? 'line-through text-[#555]' : 'text-[#e8e8e8]'}`}>{task.title}</p>
-                  {task.notes && <p className="text-xs text-[#888] mt-0.5 truncate">{task.notes}</p>}
-                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                    <Badge variant={task.status as 'todo' | 'in_progress' | 'done'} label={task.status === 'in_progress' ? 'In Progress' : task.status === 'todo' ? 'To Do' : 'Done'} />
-                    {selectedMember === 'all' && assignee && (
-                      <span className="text-[10px] text-[#888]">→ {assignee.full_name}</span>
+        {/* ── Videos being edited ── */}
+        {memberContent.length > 0 && (
+          <div className="mb-6">
+            <h2 className="text-xs font-semibold text-[#555] uppercase tracking-wide mb-3 flex items-center gap-2">
+              <Film size={12} /> Videos in Edit
+              <span className="text-[#3a3a3a]">({memberContent.length})</span>
+            </h2>
+            <div className="space-y-1.5">
+              {memberContent.map(item => {
+                const client = item.client_id ? clientMap[item.client_id] : null
+                const st = STATUS_STYLES[item.edit_status] ?? STATUS_STYLES.unassigned
+                const editor = item.assigned_editor_id ? profileMap[item.assigned_editor_id] : null
+                return (
+                  <div key={item.id} className="bg-[#202020] border border-[#2e2e2e] rounded-card px-4 py-3 flex items-center gap-3">
+                    {client && <div className="w-1 self-stretch rounded-full flex-shrink-0" style={{ backgroundColor: client.color }} />}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-[#e8e8e8] truncate">{item.title}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        {client && <span className="text-[10px] text-[#555]">{client.name}</span>}
+                        {item.posted_date && (
+                          <span className="text-[10px] text-[#555]">Due {new Date(item.posted_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                        )}
+                      </div>
+                    </div>
+                    {selectedMember === 'all' && editor && (
+                      <span className="text-xs text-[#555] flex-shrink-0">{editor.full_name.split(' ')[0]}</span>
                     )}
-                    {task.due_date && (
-                      <span className={`text-[10px] ${new Date(task.due_date) < new Date() && task.status !== 'done' ? 'text-[#ef4444]' : 'text-[#888]'}`}>
-                        Due {formatDate(task.due_date)}
-                      </span>
-                    )}
+                    <span className="flex-shrink-0 text-[10px] font-medium px-2 py-0.5 rounded" style={{ backgroundColor: st.bg, color: st.color }}>
+                      {st.label}
+                    </span>
                   </div>
-                </div>
-                <select
-                  value={task.status}
-                  onChange={e => updateStatus(task, e.target.value as 'todo' | 'in_progress' | 'done')}
-                  className="text-xs bg-[#191919] border border-[#2e2e2e] rounded-chip px-2 py-1 text-[#888] focus:outline-none flex-shrink-0"
-                >
-                  <option value="todo">To Do</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="done">Done</option>
-                </select>
-              </div>
-            )
-          })}
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── Tasks ── */}
+        <div>
+          <h2 className="text-xs font-semibold text-[#555] uppercase tracking-wide mb-3 flex items-center gap-2">
+            <AlertCircle size={12} /> Tasks
+            <span className="text-[#3a3a3a]">({memberTasks.filter(t => t.status !== 'done').length} active)</span>
+          </h2>
+
+          {memberTasks.length === 0 ? (
+            <div className="text-center py-10 text-[#555] text-sm">No tasks assigned.</div>
+          ) : (
+            <div className="space-y-2">
+              {/* Active tasks first, then done */}
+              {[...memberTasks].sort((a, b) => {
+                if (a.status === 'done' && b.status !== 'done') return 1
+                if (a.status !== 'done' && b.status === 'done') return -1
+                return 0
+              }).map(task => {
+                const assignee = profileMap[task.assigned_to]
+                const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'done'
+                return (
+                  <div key={task.id} className={`bg-[#202020] border border-[#2e2e2e] rounded-card p-4 flex items-start gap-3 transition-opacity ${task.status === 'done' ? 'opacity-50' : ''}`}>
+                    <button
+                      onClick={() => {
+                        const next = task.status === 'todo' ? 'in_progress' : task.status === 'in_progress' ? 'done' : 'todo'
+                        updateStatus(task, next)
+                      }}
+                      className="mt-0.5 flex-shrink-0 w-5 h-5 rounded-chip border border-[#2e2e2e] flex items-center justify-center hover:border-[#4f8ef7] transition-colors"
+                    >
+                      <StatusIcon status={task.status} />
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium ${task.status === 'done' ? 'line-through text-[#555]' : 'text-[#e8e8e8]'}`}>{task.title}</p>
+                      {task.notes && <p className="text-xs text-[#555] mt-0.5 truncate">{task.notes}</p>}
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                        <Badge variant={task.status as 'todo' | 'in_progress' | 'done'} label={task.status === 'in_progress' ? 'In Progress' : task.status === 'todo' ? 'To Do' : 'Done'} />
+                        {selectedMember === 'all' && assignee && (
+                          <span className="text-[10px] text-[#555]">→ {assignee.full_name}</span>
+                        )}
+                        {task.due_date && (
+                          <span className={`text-[10px] flex items-center gap-1 ${isOverdue ? 'text-[#ef4444]' : 'text-[#555]'}`}>
+                            {isOverdue && <AlertCircle size={9} />}
+                            Due {formatDate(task.due_date)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <select
+                      value={task.status}
+                      onChange={e => updateStatus(task, e.target.value as 'todo' | 'in_progress' | 'done')}
+                      className="text-xs bg-[#191919] border border-[#2e2e2e] rounded-chip px-2 py-1 text-[#888] focus:outline-none flex-shrink-0"
+                    >
+                      <option value="todo">To Do</option>
+                      <option value="in_progress">In Progress</option>
+                      <option value="done">Done</option>
+                    </select>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       </div>
 
+      {/* ── Add Task modal ── */}
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Assign Task">
         <div className="space-y-3">
-          <Input label="Task *" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="What needs to be done?" />
+          <Input label="Task *" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="What needs to be done?" autoFocus />
           <Select label="Assign To *" value={form.assigned_to} onChange={e => setForm(p => ({ ...p, assigned_to: e.target.value }))}>
             <option value="">Select member…</option>
-            {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+            {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name} ({p.role})</option>)}
           </Select>
           <div className="grid grid-cols-2 gap-3">
             <Input label="Due Date" type="date" value={form.due_date} onChange={e => setForm(p => ({ ...p, due_date: e.target.value }))} />
@@ -204,7 +299,9 @@ export default function TeamTodosPage() {
           <Textarea label="Notes" value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} rows={2} />
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setShowAdd(false)}>Cancel</Button>
-            <Button onClick={addTask} disabled={saving || !form.title.trim() || !form.assigned_to}>{saving ? 'Saving…' : 'Assign Task'}</Button>
+            <Button onClick={addTask} disabled={saving || !form.title.trim() || !form.assigned_to}>
+              {saving ? 'Saving…' : 'Assign Task'}
+            </Button>
           </div>
         </div>
       </Modal>
