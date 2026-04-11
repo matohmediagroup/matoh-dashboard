@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { ChevronLeft, ChevronRight, Plus, X, Check, BarChart2, CalendarDays, TrendingUp, AlertCircle } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, X, Check, BarChart2, CalendarDays, TrendingUp, AlertCircle, RotateCcw } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { PageSpinner } from '@/components/ui/Spinner'
 import type { Client } from '@/types/database'
@@ -35,6 +35,7 @@ export default function SchedulePage() {
   const [addingDay, setAddingDay] = useState<number | null>(null)
   const [addForm, setAddForm]    = useState({ client_id: '', label: '' })
   const [savingTarget, setSavingTarget] = useState<string | null>(null)
+  const [rescheduling, setRescheduling] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     const [{ data: slotsData }, { data: clientsData }] = await Promise.all([
@@ -127,6 +128,55 @@ export default function SchedulePage() {
     await (supabase.from('clients') as any).update({ monthly_target: target }).eq('id', clientId)
     setClients(prev => prev.map(c => c.id === clientId ? { ...c, monthly_target: target } : c))
     setSavingTarget(null)
+  }
+
+  // ── Reschedule ─────────────────────────────────────────────────────────────
+  async function rescheduleSlot(slot: PostSlot) {
+    setRescheduling(slot.id)
+    const origin = new Date(slot.post_date + 'T12:00:00')
+
+    // Build a set of existing dates per client for collision checking
+    const clientDates = new Set(
+      slots
+        .filter(s => s.client_id === slot.client_id && s.id !== slot.id)
+        .map(s => s.post_date)
+    )
+
+    function dateStr(d: Date) {
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    }
+    function addDays(d: Date, n: number) {
+      const r = new Date(d); r.setDate(r.getDate() + n); return r
+    }
+    function wouldCreate3InARow(candidate: Date): boolean {
+      const ds = dateStr(candidate)
+      const prev1 = dateStr(addDays(candidate, -1))
+      const prev2 = dateStr(addDays(candidate, -2))
+      const next1 = dateStr(addDays(candidate, 1))
+      const next2 = dateStr(addDays(candidate, 2))
+      // Check all three windows that include candidate
+      if (clientDates.has(prev2) && clientDates.has(prev1)) return true
+      if (clientDates.has(prev1) && clientDates.has(next1)) return true
+      if (clientDates.has(next1) && clientDates.has(next2)) return true
+      return false
+    }
+
+    // Try days +7 through +14 from original date
+    let newDate: string | null = null
+    for (let offset = 7; offset <= 14; offset++) {
+      const candidate = addDays(origin, offset)
+      if (!wouldCreate3InARow(candidate)) {
+        newDate = dateStr(candidate)
+        break
+      }
+    }
+    // Fallback: if all days 7-14 conflict, just use +7
+    if (!newDate) newDate = dateStr(addDays(origin, 7))
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('post_schedule') as any).update({ post_date: newDate, status: 'scheduled' }).eq('id', slot.id)
+    setRescheduling(null)
+    fetchData()
   }
 
   // ── Drag ───────────────────────────────────────────────────────────────────
@@ -316,6 +366,18 @@ export default function SchedulePage() {
                                   style={{ color: client?.color || '#888' }}>
                                   {slot.label || client?.name?.split(' ')[0] || 'Post'}
                                 </span>
+
+                                {/* Reschedule button — only on past-due unposted */}
+                                {slot.status !== 'posted' && slot.post_date < todayStr && (
+                                  <button
+                                    onClick={e => { e.stopPropagation(); rescheduleSlot(slot) }}
+                                    title="Reschedule 1-2 weeks out"
+                                    disabled={rescheduling === slot.id}
+                                    className="opacity-0 group-hover:opacity-100 flex-shrink-0 transition-opacity"
+                                  >
+                                    <RotateCcw size={9} className={`${rescheduling === slot.id ? 'animate-spin text-[#4f8ef7]' : 'text-[#555] hover:text-[#f59e0b]'}`} />
+                                  </button>
+                                )}
 
                                 <button onClick={e => { e.stopPropagation(); deleteSlot(slot.id) }}
                                   className="opacity-0 group-hover:opacity-100 flex-shrink-0 transition-opacity">
