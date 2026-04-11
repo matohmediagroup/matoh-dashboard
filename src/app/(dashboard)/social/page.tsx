@@ -10,7 +10,7 @@ import { PageSpinner } from '@/components/ui/Spinner'
 import { Badge } from '@/components/ui/Badge'
 import type { Client } from '@/types/database'
 
-type Platform = 'tiktok' | 'instagram' | 'youtube' | 'facebook'
+type Platform = 'tiktok' | 'instagram' | 'youtube'
 
 interface SocialAccount {
   id: string
@@ -46,7 +46,6 @@ const PLATFORM_CONFIG = {
   tiktok:    { label: 'TikTok',    color: '#010101', accent: '#ff0050', icon: '🎵' },
   instagram: { label: 'Instagram', color: '#e1306c', accent: '#e1306c', icon: '📷' },
   youtube:   { label: 'YouTube',   color: '#ff0000', accent: '#ff0000', icon: '▶️' },
-  facebook:  { label: 'Facebook',  color: '#1877f2', accent: '#1877f2', icon: '👤' },
 }
 
 function formatNum(n: number): string {
@@ -72,7 +71,7 @@ export default function SocialPage() {
   const [refreshing, setRefreshing] = useState<string>('') // "clientId-platform"
   const [expanded, setExpanded] = useState<string | null>(null) // "clientId"
   const [showSettings, setShowSettings] = useState<Client | null>(null)
-  const [handles, setHandles] = useState({ tiktok: '', instagram: '', youtube: '', facebook: '' })
+  const [handles, setHandles] = useState({ tiktok: '', instagram: '', youtube: '' })
   const [savingHandles, setSavingHandles] = useState(false)
   const [selectedClient, setSelectedClient] = useState<string>('all')
 
@@ -117,7 +116,7 @@ export default function SocialPage() {
   }
 
   async function refreshAllForClient(clientId: string) {
-    for (const platform of ['tiktok', 'instagram', 'youtube', 'facebook'] as Platform[]) {
+    for (const platform of ['tiktok', 'instagram', 'youtube'] as Platform[]) {
       if (getAccount(clientId, platform)) {
         await refreshPlatform(clientId, platform)
       }
@@ -128,12 +127,10 @@ export default function SocialPage() {
     const tt = getAccount(client.id, 'tiktok')
     const ig = getAccount(client.id, 'instagram')
     const yt = getAccount(client.id, 'youtube')
-    const fb = getAccount(client.id, 'facebook')
     setHandles({
       tiktok: tt?.handle ?? '',
       instagram: ig?.handle ?? '',
       youtube: yt?.handle ?? '',
-      facebook: fb?.handle ?? '',
     })
     setShowSettings(client)
   }
@@ -143,7 +140,7 @@ export default function SocialPage() {
     setSavingHandles(true)
     const clientId = showSettings.id
 
-    for (const platform of ['tiktok', 'instagram', 'youtube', 'facebook'] as Platform[]) {
+    for (const platform of ['tiktok', 'instagram', 'youtube'] as Platform[]) {
       const handle = handles[platform].trim()
       if (handle) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -169,7 +166,7 @@ export default function SocialPage() {
     : clients.filter(c => c.id === selectedClient)
 
   // Aggregate totals across all clients
-  const totalFollowers = (['tiktok', 'instagram', 'youtube', 'facebook'] as Platform[]).reduce((sum, p) => {
+  const totalFollowers = (['tiktok', 'instagram', 'youtube'] as Platform[]).reduce((sum, p) => {
     return sum + clients.reduce((s, c) => s + (getStat(c.id, p)?.followers ?? 0), 0)
   }, 0)
   const totalAvgViews = stats.reduce((s, st) => s + st.avg_views, 0)
@@ -213,7 +210,7 @@ export default function SocialPage() {
       <div className="flex-1 overflow-y-auto p-6 space-y-4">
         {displayedClients.map(client => {
           const isExpanded = expanded === client.id
-          const platforms: Platform[] = ['tiktok', 'instagram', 'youtube', 'facebook']
+          const platforms: Platform[] = ['tiktok', 'instagram', 'youtube']
 
           return (
             <div key={client.id} className="bg-[#202020] border border-[#2e2e2e] rounded-card overflow-hidden">
@@ -383,12 +380,6 @@ export default function SocialPage() {
             value={handles.youtube}
             onChange={e => setHandles(p => ({ ...p, youtube: e.target.value }))}
             placeholder="Volkswagen Pacific"
-          />
-          <Input
-            label="👤 Facebook Page"
-            value={handles.facebook}
-            onChange={e => setHandles(p => ({ ...p, facebook: e.target.value }))}
-            placeholder="VWPacific"
           />
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" onClick={() => setShowSettings(null)}>Cancel</Button>
