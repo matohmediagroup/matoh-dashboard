@@ -280,11 +280,11 @@ export default function SocialPage() {
                               <p className="text-sm font-semibold text-[#e8e8e8]">{formatNum(stat.followers)}</p>
                             </div>
                             <div>
-                              <p className="text-[10px] text-[#888]">Avg Views</p>
+                              <p className="text-[10px] text-[#888]">{platform === 'youtube' ? 'Avg Views' : 'Avg Views (Last 20)'}</p>
                               <p className="text-sm font-semibold text-[#e8e8e8]">{formatNum(stat.avg_views)}</p>
                             </div>
                             <div>
-                              <p className="text-[10px] text-[#888]">Total Views</p>
+                              <p className="text-[10px] text-[#888]">{platform === 'youtube' ? 'Total Views' : 'Views (Last 20)'}</p>
                               <p className="text-sm font-medium text-[#e8e8e8]">{formatNum(stat.total_views)}</p>
                             </div>
                             <div>
@@ -292,7 +292,7 @@ export default function SocialPage() {
                               <p className="text-sm font-medium text-[#4f8ef7]">{formatNum(calcMTD(stat.latest_videos, 'views'))}</p>
                             </div>
                             <div>
-                              <p className="text-[10px] text-[#888]">Total Likes</p>
+                              <p className="text-[10px] text-[#888]">{platform === 'youtube' ? 'Total Likes' : 'Likes (Last 20)'}</p>
                               <p className="text-sm font-medium text-[#e8e8e8]">{formatNum(stat.total_likes ?? (stat.latest_videos ?? []).reduce((s, v) => s + v.likes, 0))}</p>
                             </div>
                             <div>
