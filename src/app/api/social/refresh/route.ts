@@ -10,6 +10,7 @@ const YOUTUBE_KEY = process.env.YOUTUBE_API_KEY!
 const ACTORS = {
   tiktok: 'clockworks~free-tiktok-scraper',
   instagram: 'apify~instagram-profile-scraper',
+  facebook: 'apify~facebook-pages-scraper',
 }
 
 async function runApifyActor(actorId: string, input: object): Promise<object | null> {
@@ -73,10 +74,12 @@ async function fetchTikTokStats(handle: string) {
   }))
 
   const totalViews = videos.reduce((s: number, v: any) => s + v.views, 0)
+  const totalLikes = videos.reduce((s: number, v: any) => s + v.likes, 0)
 
   return {
     followers: profile.authorMeta?.fans || profile.fans || 0,
     total_views: totalViews,
+    total_likes: totalLikes,
     avg_views: videos.length > 0 ? Math.round(totalViews / videos.length) : 0,
     post_count: profile.authorMeta?.video || videos.length,
     latest_videos: videos,
@@ -103,10 +106,12 @@ async function fetchInstagramStats(handle: string) {
   }))
 
   const totalViews = posts.reduce((s: number, p: any) => s + p.views, 0)
+  const totalLikes = posts.reduce((s: number, p: any) => s + p.likes, 0)
 
   return {
     followers: profile.followersCount || profile.followers || 0,
     total_views: totalViews,
+    total_likes: totalLikes,
     avg_views: posts.length > 0 ? Math.round(totalViews / posts.length) : 0,
     post_count: profile.postsCount || profile.mediaCount || posts.length,
     latest_videos: posts,
@@ -155,16 +160,51 @@ async function fetchYouTubeStats(handle: string) {
     }
 
     const totalViews = videos.reduce((s: number, v: any) => s + v.views, 0)
+    const totalLikes = videos.reduce((s: number, v: any) => s + v.likes, 0)
 
     return {
       followers: parseInt(stats?.subscriberCount || '0'),
       total_views: parseInt(stats?.viewCount || '0'),
+      total_likes: totalLikes,
       avg_views: videos.length > 0 ? Math.round(totalViews / videos.length) : 0,
       post_count: parseInt(stats?.videoCount || '0'),
       latest_videos: videos,
     }
   } catch {
     return null
+  }
+}
+
+async function fetchFacebookStats(handle: string) {
+  const pageName = handle.replace('@', '')
+  const data = await runApifyActor(ACTORS.facebook, {
+    startUrls: [{ url: `https://www.facebook.com/${pageName}` }],
+    maxPosts: 20,
+  }) as any[]
+
+  if (!data?.length) return null
+
+  const page = data[0]
+  const posts = (page.posts || page.latestPosts || []).slice(0, 20).map((p: any) => ({
+    title: p.text?.slice(0, 100) || p.message?.slice(0, 100) || '',
+    views: p.videoViewCount || p.views || 0,
+    likes: p.likes || p.likesCount || p.reactionsCount || 0,
+    comments: p.comments || p.commentsCount || 0,
+    url: p.url || p.postUrl || '',
+    thumbnail: p.media?.[0]?.thumbnail || p.thumbnail || '',
+    date: p.time || p.date || null,
+  }))
+
+  const totalViews = posts.reduce((s: number, p: any) => s + p.views, 0)
+  const totalLikes = posts.reduce((s: number, p: any) => s + p.likes, 0)
+
+  return {
+    followers: page.likes || page.followers || page.pageLikes || 0,
+    total_views: totalViews,
+    total_likes: totalLikes,
+    avg_views: posts.length > 0 ? Math.round(totalViews / posts.length) : 0,
+    post_count: page.posts?.length || posts.length,
+    latest_videos: posts,
   }
 }
 
@@ -192,6 +232,7 @@ export async function POST(req: NextRequest) {
   if (platform === 'tiktok') stats = await fetchTikTokStats(account.handle)
   if (platform === 'instagram') stats = await fetchInstagramStats(account.handle)
   if (platform === 'youtube') stats = await fetchYouTubeStats(account.handle)
+  if (platform === 'facebook') stats = await fetchFacebookStats(account.handle)
 
   if (!stats) {
     return NextResponse.json({ error: 'Failed to fetch stats' }, { status: 500 })

@@ -10,7 +10,7 @@ import { PageSpinner } from '@/components/ui/Spinner'
 import { Badge } from '@/components/ui/Badge'
 import type { Client } from '@/types/database'
 
-type Platform = 'tiktok' | 'instagram' | 'youtube'
+type Platform = 'tiktok' | 'instagram' | 'youtube' | 'facebook'
 
 interface SocialAccount {
   id: string
@@ -25,6 +25,7 @@ interface SocialStats {
   platform: Platform
   followers: number
   total_views: number
+  total_likes: number
   avg_views: number
   post_count: number
   latest_videos: VideoItem[]
@@ -45,12 +46,21 @@ const PLATFORM_CONFIG = {
   tiktok:    { label: 'TikTok',    color: '#010101', accent: '#ff0050', icon: '🎵' },
   instagram: { label: 'Instagram', color: '#e1306c', accent: '#e1306c', icon: '📷' },
   youtube:   { label: 'YouTube',   color: '#ff0000', accent: '#ff0000', icon: '▶️' },
+  facebook:  { label: 'Facebook',  color: '#1877f2', accent: '#1877f2', icon: '👤' },
 }
 
 function formatNum(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
   return String(n)
+}
+
+function calcMTD(videos: VideoItem[], field: 'views' | 'likes'): number {
+  const now = new Date()
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+  return (videos ?? [])
+    .filter(v => v.date && new Date(v.date) >= startOfMonth)
+    .reduce((sum, v) => sum + (v[field] || 0), 0)
 }
 
 export default function SocialPage() {
@@ -62,7 +72,7 @@ export default function SocialPage() {
   const [refreshing, setRefreshing] = useState<string>('') // "clientId-platform"
   const [expanded, setExpanded] = useState<string | null>(null) // "clientId"
   const [showSettings, setShowSettings] = useState<Client | null>(null)
-  const [handles, setHandles] = useState({ tiktok: '', instagram: '', youtube: '' })
+  const [handles, setHandles] = useState({ tiktok: '', instagram: '', youtube: '', facebook: '' })
   const [savingHandles, setSavingHandles] = useState(false)
   const [selectedClient, setSelectedClient] = useState<string>('all')
 
@@ -72,7 +82,10 @@ export default function SocialPage() {
       supabase.from('social_accounts').select('*'),
       supabase.from('social_stats').select('*'),
     ])
-    setClients(clientsData ?? [])
+    const EXCLUDED_KEYWORDS = ['cdf', 'legends', 'phillips']
+    setClients((clientsData ?? []).filter(c =>
+      !EXCLUDED_KEYWORDS.some(kw => c.name.toLowerCase().includes(kw))
+    ))
     setAccounts(accountsData ?? [])
     setStats(statsData ?? [])
     setLoading(false)
@@ -104,7 +117,7 @@ export default function SocialPage() {
   }
 
   async function refreshAllForClient(clientId: string) {
-    for (const platform of ['tiktok', 'instagram', 'youtube'] as Platform[]) {
+    for (const platform of ['tiktok', 'instagram', 'youtube', 'facebook'] as Platform[]) {
       if (getAccount(clientId, platform)) {
         await refreshPlatform(clientId, platform)
       }
@@ -115,10 +128,12 @@ export default function SocialPage() {
     const tt = getAccount(client.id, 'tiktok')
     const ig = getAccount(client.id, 'instagram')
     const yt = getAccount(client.id, 'youtube')
+    const fb = getAccount(client.id, 'facebook')
     setHandles({
       tiktok: tt?.handle ?? '',
       instagram: ig?.handle ?? '',
       youtube: yt?.handle ?? '',
+      facebook: fb?.handle ?? '',
     })
     setShowSettings(client)
   }
@@ -128,7 +143,7 @@ export default function SocialPage() {
     setSavingHandles(true)
     const clientId = showSettings.id
 
-    for (const platform of ['tiktok', 'instagram', 'youtube'] as Platform[]) {
+    for (const platform of ['tiktok', 'instagram', 'youtube', 'facebook'] as Platform[]) {
       const handle = handles[platform].trim()
       if (handle) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -154,7 +169,7 @@ export default function SocialPage() {
     : clients.filter(c => c.id === selectedClient)
 
   // Aggregate totals across all clients
-  const totalFollowers = (['tiktok', 'instagram', 'youtube'] as Platform[]).reduce((sum, p) => {
+  const totalFollowers = (['tiktok', 'instagram', 'youtube', 'facebook'] as Platform[]).reduce((sum, p) => {
     return sum + clients.reduce((s, c) => s + (getStat(c.id, p)?.followers ?? 0), 0)
   }, 0)
   const totalAvgViews = stats.reduce((s, st) => s + st.avg_views, 0)
@@ -198,7 +213,7 @@ export default function SocialPage() {
       <div className="flex-1 overflow-y-auto p-6 space-y-4">
         {displayedClients.map(client => {
           const isExpanded = expanded === client.id
-          const platforms: Platform[] = ['tiktok', 'instagram', 'youtube']
+          const platforms: Platform[] = ['tiktok', 'instagram', 'youtube', 'facebook']
 
           return (
             <div key={client.id} className="bg-[#202020] border border-[#2e2e2e] rounded-card overflow-hidden">
@@ -259,22 +274,30 @@ export default function SocialPage() {
                         <p className="text-xs text-[#555]">Not fetched yet — hit refresh</p>
                       ) : (
                         <div className="space-y-2">
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-2">
                             <div>
                               <p className="text-[10px] text-[#888]">Followers</p>
-                              <p className="text-base font-semibold text-[#e8e8e8]">{formatNum(stat.followers)}</p>
+                              <p className="text-sm font-semibold text-[#e8e8e8]">{formatNum(stat.followers)}</p>
                             </div>
                             <div>
                               <p className="text-[10px] text-[#888]">Avg Views</p>
-                              <p className="text-base font-semibold text-[#e8e8e8]">{formatNum(stat.avg_views)}</p>
-                            </div>
-                            <div>
-                              <p className="text-[10px] text-[#888]">Total Posts</p>
-                              <p className="text-sm font-medium text-[#e8e8e8]">{formatNum(stat.post_count)}</p>
+                              <p className="text-sm font-semibold text-[#e8e8e8]">{formatNum(stat.avg_views)}</p>
                             </div>
                             <div>
                               <p className="text-[10px] text-[#888]">Total Views</p>
                               <p className="text-sm font-medium text-[#e8e8e8]">{formatNum(stat.total_views)}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-[#4f8ef7]">Views MTD</p>
+                              <p className="text-sm font-medium text-[#4f8ef7]">{formatNum(calcMTD(stat.latest_videos, 'views'))}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-[#888]">Total Likes</p>
+                              <p className="text-sm font-medium text-[#e8e8e8]">{formatNum(stat.total_likes ?? (stat.latest_videos ?? []).reduce((s, v) => s + v.likes, 0))}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-[#4f8ef7]">Likes MTD</p>
+                              <p className="text-sm font-medium text-[#4f8ef7]">{formatNum(calcMTD(stat.latest_videos, 'likes'))}</p>
                             </div>
                           </div>
                           <p className="text-[10px] text-[#555]">
@@ -360,6 +383,12 @@ export default function SocialPage() {
             value={handles.youtube}
             onChange={e => setHandles(p => ({ ...p, youtube: e.target.value }))}
             placeholder="Volkswagen Pacific"
+          />
+          <Input
+            label="👤 Facebook Page"
+            value={handles.facebook}
+            onChange={e => setHandles(p => ({ ...p, facebook: e.target.value }))}
+            placeholder="VWPacific"
           />
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" onClick={() => setShowSettings(null)}>Cancel</Button>
