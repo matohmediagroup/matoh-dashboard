@@ -367,8 +367,8 @@ export default function SchedulePage() {
                                   {slot.label || client?.name?.split(' ')[0] || 'Post'}
                                 </span>
 
-                                {/* Reschedule button — only on past-due unposted */}
-                                {slot.status !== 'posted' && slot.post_date < todayStr && (
+                                {/* Reschedule button — all unposted slots */}
+                                {slot.status !== 'posted' && (
                                   <button
                                     onClick={e => { e.stopPropagation(); rescheduleSlot(slot) }}
                                     title="Reschedule 1-2 weeks out"
