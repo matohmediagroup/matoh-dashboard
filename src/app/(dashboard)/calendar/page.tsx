@@ -145,8 +145,10 @@ export default function CalendarPage() {
                             </div>
                           )
                         }
+                        const evColor = ev.client?.color ?? '#8b5cf6'
                         return (
-                          <div key={j} className="px-1.5 py-0.5 rounded-chip text-[10px] font-medium truncate mb-0.5 flex items-center gap-1 bg-[#8b5cf6]/20 text-[#8b5cf6]">
+                          <div key={j} className="px-1.5 py-0.5 rounded-chip text-[10px] font-medium truncate mb-0.5 flex items-center gap-1"
+                            style={{ backgroundColor: `${evColor}22`, color: evColor }}>
                             <Phone size={8} />
                             {ev.data.title}
                           </div>
@@ -169,10 +171,10 @@ export default function CalendarPage() {
               const isShoot = ev.kind === 'shoot'
               const date = isShoot ? ev.data.shoot_date : ev.data.event_date
               const time = isShoot ? ev.data.shoot_time : ev.data.event_time
-              const color = isShoot ? (ev.client?.color ?? '#4f8ef7') : '#8b5cf6'
+              const color = isShoot ? (ev.client?.color ?? '#4f8ef7') : (ev.client?.color ?? '#8b5cf6')
               const title = isShoot ? (ev.client?.name ?? 'Shoot') : ev.data.title
               return (
-                <div key={i} className="bg-[#202020] border border-[#2e2e2e] rounded-card p-3 flex gap-3">
+                <div key={i} className="rounded-card p-3 flex gap-3 border" style={{ backgroundColor: `${color}11`, borderColor: `${color}33` }}>
                   <div className="w-1 self-stretch rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
                   <div>
                     <div className="flex items-center gap-1.5 mb-0.5">

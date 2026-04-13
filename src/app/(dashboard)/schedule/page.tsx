@@ -219,14 +219,19 @@ export default function SchedulePage() {
   const totalPosted  = thisMonthSlots.filter(s => s.status === 'posted').length
   const totalScheduled = thisMonthSlots.length
 
+  // Missed = past-due unposted slots (all months, across all loaded slots)
+  const missedSlots = slots.filter(s => s.post_date < todayStr && s.status !== 'posted')
+  const totalMissed = missedSlots.length
+
   // ── Per-client stats ───────────────────────────────────────────────────────
   function clientStats(clientSlots: PostSlot[], target?: number | null) {
     const scheduled = clientSlots.length
     const posted    = clientSlots.filter(s => s.status === 'posted').length
     const remaining = clientSlots.filter(s => s.status === 'scheduled').length
+    const missed    = clientSlots.filter(s => s.post_date < todayStr && s.status !== 'posted').length
     const pct       = scheduled > 0 ? Math.round((posted / scheduled) * 100) : 0
     const onTrack   = target ? posted + remaining >= target : null
-    return { scheduled, posted, remaining, pct, onTrack }
+    return { scheduled, posted, remaining, missed, pct, onTrack }
   }
 
   return (
@@ -273,13 +278,14 @@ export default function SchedulePage() {
         </div>
 
         {/* Top-level month counters */}
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-5 gap-2">
           {[
             { label: `${current.toLocaleString('default', { month: 'short' })} Scheduled`, value: totalScheduled, color: '#888' },
             { label: 'Posted', value: totalPosted, color: '#10b981' },
             { label: 'MTD Posted', value: mtdSlots.filter(s => s.status === 'posted').length, color: '#4f8ef7' },
             { label: `${prevMonth.toLocaleString('default', { month: 'short' })} + ${current.toLocaleString('default', { month: 'short' })}`,
               value: prevMonthSlots.filter(s => s.status === 'posted').length + totalPosted, color: '#a855f7' },
+            { label: 'Missed', value: totalMissed, color: '#f59e0b' },
           ].map(({ label, value, color }) => (
             <div key={label} className="bg-[#191919] border border-[#2e2e2e] rounded-card px-3 py-2 flex items-center justify-between">
               <span className="text-[11px] text-[#555]">{label}</span>
@@ -361,12 +367,13 @@ export default function SchedulePage() {
                         <div className="flex-1 space-y-0.5">
                           {daySlots.map(slot => {
                             const client = clientMap[slot.client_id]
+                            const isPastDueUnposted = slot.post_date < todayStr && slot.status !== 'posted'
                             return (
                               <div key={slot.id} draggable
                                 onDragStart={e => onDragStart(e, slot.id)}
                                 onDragEnd={() => { setDraggingId(null); setDragOverDay(null) }}
                                 className={`group flex items-center gap-1 px-1.5 py-0.5 rounded-chip cursor-grab active:cursor-grabbing select-none transition-opacity ${draggingId === slot.id ? 'opacity-30' : ''}`}
-                                style={{ backgroundColor: client ? `${client.color}22` : '#2e2e2e' }}
+                                style={{ backgroundColor: isPastDueUnposted ? '#f59e0b22' : (client ? `${client.color}22` : '#2e2e2e'), outline: isPastDueUnposted ? '1px solid #f59e0b55' : undefined }}
                               >
                                 {/* Posted indicator */}
                                 <button onClick={e => { e.stopPropagation(); togglePosted(slot) }}
@@ -453,11 +460,12 @@ export default function SchedulePage() {
                         </div>
 
                         {/* Stats grid */}
-                        <div className="grid grid-cols-5 gap-2 mb-3">
+                        <div className="grid grid-cols-6 gap-2 mb-3">
                           {[
                             { label: 'Scheduled', value: stats.scheduled, color: '#888' },
                             { label: 'Posted', value: stats.posted, color: '#10b981' },
-                            { label: 'Remaining', value: stats.remaining, color: '#f59e0b' },
+                            { label: 'Remaining', value: stats.remaining, color: '#4f8ef7' },
+                            { label: 'Missed', value: stats.missed, color: '#f59e0b' },
                             { label: 'Prev Month', value: prevStats.posted + '/' + prevStats.scheduled, color: '#555' },
                             { label: 'Combined', value: prevStats.posted + stats.posted, color: '#a855f7' },
                           ].map(({ label, value, color }) => (

@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatDate } from '@/lib/utils'
 import { Badge } from '@/components/ui/Badge'
 import { MapPin, Clock, CheckCircle2, Video } from 'lucide-react'
 import Link from 'next/link'
+import { OwnerDashboard } from './OwnerDashboard'
 
 export default async function DashboardPage() {
   const supabase = createClient()
@@ -15,128 +16,11 @@ export default async function DashboardPage() {
 
   const role = profile.role
   const now = new Date()
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-  const in7 = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   const today = now.toISOString().split('T')[0]
 
   // ── Owner / Manager view ──────────────────────────────────────────
   if (role === 'owner' || role === 'manager') {
-    const [
-      { data: paidInvoices },
-      { data: contentPostedMTD },
-      { data: activeClients },
-      { data: outstandingInvoices },
-      { data: upcomingShoots },
-      { data: contentDue },
-      { data: activityFeed },
-    ] = await Promise.all([
-      supabase.from('invoices').select('amount').eq('status', 'paid').gte('created_at', startOfMonth),
-      supabase.from('content_items').select('id').eq('edit_status', 'done').gte('updated_at', startOfMonth),
-      supabase.from('clients').select('id').eq('status', 'active'),
-      supabase.from('invoices').select('amount, client_id, status').neq('status', 'paid'),
-      supabase.from('shoots').select('*, clients(name, color)').gte('shoot_date', today).lte('shoot_date', in7).order('shoot_date').limit(5),
-      supabase.from('content_items').select('*, clients(name, color)').lte('posted_date', in7).gte('posted_date', today).neq('edit_status', 'done').order('posted_date').limit(8),
-      supabase.from('activity_log').select('*, profiles(full_name)').order('created_at', { ascending: false }).limit(20),
-    ])
-
-    const revenueMTD = (paidInvoices ?? []).reduce((s, i) => s + i.amount, 0)
-    const outstandingTotal = (outstandingInvoices ?? []).reduce((s, i) => s + i.amount, 0)
-
-    const kpis = [
-      { label: 'Revenue MTD', value: formatCurrency(revenueMTD), color: '#10b981' },
-      { label: 'Content Posted MTD', value: String(contentPostedMTD?.length ?? 0), color: '#4f8ef7' },
-      { label: 'Active Clients', value: String(activeClients?.length ?? 0), color: '#8b5cf6' },
-      { label: 'Outstanding', value: formatCurrency(outstandingTotal), color: '#f59e0b' },
-    ]
-
-    return (
-      <div className="p-6 max-w-6xl">
-        <div className="mb-8">
-          <h1 className="text-2xl font-semibold text-[#e8e8e8]">Good {getGreeting()}, {profile.full_name.split(' ')[0]}</h1>
-          <p className="text-sm text-[#888] mt-0.5">{now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
-        </div>
-
-        {/* KPI cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {kpis.map(kpi => (
-            <div key={kpi.label} className="bg-[#202020] border border-[#2e2e2e] rounded-card p-4">
-              <p className="text-xs text-[#888] mb-1">{kpi.label}</p>
-              <p className="text-2xl font-semibold" style={{ color: kpi.color }}>{kpi.value}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          {/* Upcoming shoots */}
-          <div className="bg-[#202020] border border-[#2e2e2e] rounded-card p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-[#e8e8e8]">Shoots This Week</h2>
-              <Link href="/videographer" className="text-xs text-[#888] hover:text-[#4f8ef7]">View all →</Link>
-            </div>
-            {!upcomingShoots?.length ? <p className="text-xs text-[#555]">No shoots this week.</p> : (
-              <div className="space-y-2">
-                {(upcomingShoots as any[]).map((s: any) => (
-                  <div key={s.id} className="flex gap-2 p-2 border border-[#2e2e2e] rounded-card">
-                    {s.clients && <div className="w-1 self-stretch rounded-full" style={{ backgroundColor: s.clients.color }} />}
-                    <div>
-                      <p className="text-xs font-medium text-[#e8e8e8]">{s.clients?.name ?? 'Shoot'}</p>
-                      <p className="text-[10px] text-[#888] flex items-center gap-1 mt-0.5">
-                        <Clock size={9} />
-                        {new Date(s.shoot_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                        {s.shoot_time && ` · ${s.shoot_time.slice(0, 5)}`}
-                      </p>
-                      {s.location && <p className="text-[10px] text-[#555] flex items-center gap-1"><MapPin size={9} />{s.location}</p>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Content due this week */}
-          <div className="bg-[#202020] border border-[#2e2e2e] rounded-card p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-[#e8e8e8]">Content Due This Week</h2>
-              <Link href="/content" className="text-xs text-[#888] hover:text-[#4f8ef7]">View all →</Link>
-            </div>
-            {!contentDue?.length ? <p className="text-xs text-[#555]">Nothing due this week.</p> : (
-              <div className="space-y-2">
-                {(contentDue as any[]).map((item: any) => (
-                  <div key={item.id} className="flex items-center gap-2 p-2 border border-[#2e2e2e] rounded-card">
-                    {item.clients && <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.clients.color }} />}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-[#e8e8e8] truncate">{item.title}</p>
-                      <p className="text-[10px] text-[#888]">{item.posted_date && formatDate(item.posted_date)}</p>
-                    </div>
-                    <Badge variant={item.edit_status as 'unassigned' | 'in_progress' | 'revisions' | 'done'} />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Activity feed */}
-          <div className="bg-[#202020] border border-[#2e2e2e] rounded-card p-5">
-            <h2 className="text-sm font-semibold text-[#e8e8e8] mb-4">Team Activity</h2>
-            {!activityFeed?.length ? <p className="text-xs text-[#555]">No recent activity.</p> : (
-              <div className="space-y-2 overflow-y-auto max-h-64">
-                {(activityFeed as any[]).map((log: any) => (
-                  <div key={log.id} className="flex gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-[#4f8ef7] mt-1.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-xs text-[#e8e8e8]">{log.description}</p>
-                      <p className="text-[10px] text-[#888]">
-                        {log.profiles?.full_name} · {new Date(log.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    )
+    return <OwnerDashboard profile={{ id: profile.id, full_name: profile.full_name, role: profile.role }} />
   }
 
   // ── Editor view ────────────────────────────────────────────────────
@@ -277,11 +161,4 @@ export default async function DashboardPage() {
       </div>
     </div>
   )
-}
-
-function getGreeting() {
-  const h = new Date().getHours()
-  if (h < 12) return 'morning'
-  if (h < 17) return 'afternoon'
-  return 'evening'
 }

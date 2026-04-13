@@ -19,6 +19,25 @@ const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }
   done:        { bg: '#0d3d2a', color: '#10b981', label: 'Done' },
 }
 
+function isOverdue(task: Task): boolean {
+  if (!task.due_date || task.status === 'done') return false
+  return new Date(task.due_date) < new Date()
+}
+
+function sortTasksWithOverdue(tasks: Task[]): Task[] {
+  return [...tasks].sort((a, b) => {
+    // Done tasks always last
+    if (a.status === 'done' && b.status !== 'done') return 1
+    if (a.status !== 'done' && b.status === 'done') return -1
+    // Among non-done: overdue first
+    const aOverdue = isOverdue(a)
+    const bOverdue = isOverdue(b)
+    if (aOverdue && !bOverdue) return -1
+    if (!aOverdue && bOverdue) return 1
+    return 0
+  })
+}
+
 export default function TeamTodosPage() {
   const supabase = createClient()
   const [tasks, setTasks]         = useState<Task[]>([])
@@ -108,6 +127,11 @@ export default function TeamTodosPage() {
     return taskCount + contentCount
   }
 
+  // Overdue count per member (for red sidebar badge)
+  function overdueCount(memberId: string) {
+    return tasks.filter(t => t.assigned_to === memberId && isOverdue(t)).length
+  }
+
   const StatusIcon = ({ status }: { status: string }) => {
     if (status === 'done') return <Check size={14} className="text-[#10b981]" />
     if (status === 'in_progress') return <Clock size={14} className="text-[#4f8ef7]" />
@@ -134,6 +158,7 @@ export default function TeamTodosPage() {
           </button>
           {members.map(p => {
             const count = pendingCount(p.id)
+            const overdue = overdueCount(p.id)
             return (
               <button key={p.id} onClick={() => setSelectedMember(p.id)}
                 className={`w-full text-left px-3 py-2 rounded-card text-sm transition-colors flex items-center justify-between ${selectedMember === p.id ? 'bg-[#4f8ef7]/15 text-[#4f8ef7]' : 'text-[#888] hover:text-[#e8e8e8] hover:bg-[#252525]'}`}>
@@ -141,9 +166,14 @@ export default function TeamTodosPage() {
                   <p className="truncate">{p.full_name.split(' ')[0]}</p>
                   <p className="text-[10px] text-[#555] truncate capitalize">{p.role}</p>
                 </div>
-                {count > 0 && (
-                  <span className="text-[10px] bg-[#2e2e2e] px-1.5 py-0.5 rounded-chip flex-shrink-0 ml-1">{count}</span>
-                )}
+                <div className="flex items-center gap-1 flex-shrink-0 ml-1">
+                  {overdue > 0 && (
+                    <span className="text-[10px] bg-[#3d1a1a] text-[#ef4444] px-1.5 py-0.5 rounded-chip font-medium">{overdue}</span>
+                  )}
+                  {count > 0 && (
+                    <span className="text-[10px] bg-[#2e2e2e] px-1.5 py-0.5 rounded-chip">{count}</span>
+                  )}
+                </div>
               </button>
             )
           })}
@@ -229,16 +259,14 @@ export default function TeamTodosPage() {
             <div className="text-center py-10 text-[#555] text-sm">No tasks assigned.</div>
           ) : (
             <div className="space-y-2">
-              {/* Active tasks first, then done */}
-              {[...memberTasks].sort((a, b) => {
-                if (a.status === 'done' && b.status !== 'done') return 1
-                if (a.status !== 'done' && b.status === 'done') return -1
-                return 0
-              }).map(task => {
+              {sortTasksWithOverdue(memberTasks).map(task => {
                 const assignee = profileMap[task.assigned_to]
-                const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'done'
+                const overdue = isOverdue(task)
                 return (
-                  <div key={task.id} className={`bg-[#202020] border border-[#2e2e2e] rounded-card p-4 flex items-start gap-3 transition-opacity ${task.status === 'done' ? 'opacity-50' : ''}`}>
+                  <div
+                    key={task.id}
+                    className={`bg-[#202020] border border-[#2e2e2e] rounded-card p-4 flex items-start gap-3 transition-opacity ${task.status === 'done' ? 'opacity-50' : ''} ${overdue ? 'border-l-2 border-l-[#ef4444] bg-[#1e1515]' : ''}`}
+                  >
                     <button
                       onClick={() => {
                         const next = task.status === 'todo' ? 'in_progress' : task.status === 'in_progress' ? 'done' : 'todo'
@@ -249,16 +277,19 @@ export default function TeamTodosPage() {
                       <StatusIcon status={task.status} />
                     </button>
                     <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium ${task.status === 'done' ? 'line-through text-[#555]' : 'text-[#e8e8e8]'}`}>{task.title}</p>
+                      <p className={`text-sm font-medium ${task.status === 'done' ? 'line-through text-[#555]' : overdue ? 'text-[#ef4444]' : 'text-[#e8e8e8]'}`}>{task.title}</p>
                       {task.notes && <p className="text-xs text-[#555] mt-0.5 truncate">{task.notes}</p>}
                       <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                         <Badge variant={task.status as 'todo' | 'in_progress' | 'done'} label={task.status === 'in_progress' ? 'In Progress' : task.status === 'todo' ? 'To Do' : 'Done'} />
+                        {overdue && (
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-[#3d1a1a] text-[#ef4444]">Overdue</span>
+                        )}
                         {selectedMember === 'all' && assignee && (
                           <span className="text-[10px] text-[#555]">→ {assignee.full_name}</span>
                         )}
                         {task.due_date && (
-                          <span className={`text-[10px] flex items-center gap-1 ${isOverdue ? 'text-[#ef4444]' : 'text-[#555]'}`}>
-                            {isOverdue && <AlertCircle size={9} />}
+                          <span className={`text-[10px] flex items-center gap-1 ${overdue ? 'text-[#ef4444]' : 'text-[#555]'}`}>
+                            {overdue && <AlertCircle size={9} />}
                             Due {formatDate(task.due_date)}
                           </span>
                         )}

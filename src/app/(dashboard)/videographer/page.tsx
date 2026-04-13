@@ -172,8 +172,9 @@ export default function VideographerPage() {
     const doneCount = shootScripts.filter(s => s.done).length
     const progress = shootScripts.length > 0 ? Math.round((doneCount / shootScripts.length) * 100) : 0
 
+    const hasPdf = !!shoot.pdf_url
     return (
-      <div key={shoot.id} className="bg-[#202020] border border-[#2e2e2e] rounded-card overflow-hidden">
+      <div key={shoot.id} className="bg-[#202020] rounded-card overflow-hidden" style={{ border: hasPdf ? '1px solid #2e2e2e' : '1px solid #f59e0b44' }}>
 
         {/* Header row */}
         <div className="flex items-center gap-3 px-4 py-3">
@@ -325,8 +326,25 @@ export default function VideographerPage() {
     )
   }
 
+  const shootsMissingScript = upcomingShoots.filter(s => !s.pdf_url)
+
   return (
     <div className="flex flex-col h-full">
+      {shootsMissingScript.length > 0 && (
+        <div className="flex items-start gap-3 px-6 py-3 bg-[#2a2000] border-b border-[#f59e0b]/30 flex-shrink-0">
+          <span className="text-[#f59e0b] flex-shrink-0 mt-0.5">⚠</span>
+          <div>
+            <span className="text-xs font-semibold text-[#f59e0b]">{shootsMissingScript.length} shoot{shootsMissingScript.length !== 1 ? 's' : ''} missing scripts: </span>
+            <span className="text-xs text-[#c8a84b]">
+              {shootsMissingScript.map(s => {
+                const c = s.client_id ? clientMap[s.client_id] : null
+                const label = c ? c.name : new Date(s.shoot_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                return label
+              }).join(', ')}
+            </span>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between px-6 py-4 border-b border-[#2e2e2e] flex-shrink-0">
         <div>
           <h1 className="text-xl font-semibold text-[#e8e8e8]">Shoot Schedule</h1>
