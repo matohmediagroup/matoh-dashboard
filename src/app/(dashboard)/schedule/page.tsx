@@ -36,6 +36,7 @@ export default function SchedulePage() {
   const [addForm, setAddForm]    = useState({ client_id: '', label: '' })
   const [savingTarget, setSavingTarget] = useState<string | null>(null)
   const [rescheduling, setRescheduling] = useState<string | null>(null)
+  const [reschedulePrompt, setReschedulePrompt] = useState<{ slot: PostSlot; suggestedDate: string } | null>(null)
 
   const fetchData = useCallback(async () => {
     const [{ data: slotsData }, { data: clientsData }] = await Promise.all([
@@ -131,17 +132,10 @@ export default function SchedulePage() {
   }
 
   // ── Reschedule ─────────────────────────────────────────────────────────────
-  async function rescheduleSlot(slot: PostSlot) {
-    setRescheduling(slot.id)
-    const origin = new Date(slot.post_date + 'T12:00:00')
-
-    // Build a set of existing dates per client for collision checking
+  function buildRescheduleHelpers(slotId: string) {
     const clientDates = new Set(
-      slots
-        .filter(s => s.client_id === slot.client_id && s.id !== slot.id)
-        .map(s => s.post_date)
+      slots.filter(s => s.client_id === slots.find(x => x.id === slotId)?.client_id && s.id !== slotId).map(s => s.post_date)
     )
-
     function dateStr(d: Date) {
       return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
     }
@@ -149,19 +143,24 @@ export default function SchedulePage() {
       const r = new Date(d); r.setDate(r.getDate() + n); return r
     }
     function wouldCreate3InARow(candidate: Date): boolean {
-      const ds = dateStr(candidate)
       const prev1 = dateStr(addDays(candidate, -1))
       const prev2 = dateStr(addDays(candidate, -2))
       const next1 = dateStr(addDays(candidate, 1))
       const next2 = dateStr(addDays(candidate, 2))
-      // Check all three windows that include candidate
       if (clientDates.has(prev2) && clientDates.has(prev1)) return true
       if (clientDates.has(prev1) && clientDates.has(next1)) return true
       if (clientDates.has(next1) && clientDates.has(next2)) return true
       return false
     }
+    return { dateStr, addDays, wouldCreate3InARow }
+  }
 
-    // Try days +7 through +14 from original date
+  async function rescheduleSlot(slot: PostSlot) {
+    setRescheduling(slot.id)
+    const origin = new Date(slot.post_date + 'T12:00:00')
+    const { dateStr, addDays, wouldCreate3InARow } = buildRescheduleHelpers(slot.id)
+
+    // Try days +7 through +14
     let newDate: string | null = null
     for (let offset = 7; offset <= 14; offset++) {
       const candidate = addDays(origin, offset)
@@ -170,12 +169,33 @@ export default function SchedulePage() {
         break
       }
     }
-    // Fallback: if all days 7-14 conflict, just use +7
-    if (!newDate) newDate = dateStr(addDays(origin, 7))
+
+    if (!newDate) {
+      // No clean slot in 7-14 days — find next available beyond +14
+      let fallback: string | null = null
+      for (let offset = 15; offset <= 60; offset++) {
+        const candidate = addDays(origin, offset)
+        if (!wouldCreate3InARow(candidate)) {
+          fallback = dateStr(candidate)
+          break
+        }
+      }
+      setRescheduling(null)
+      setReschedulePrompt({ slot, suggestedDate: fallback ?? dateStr(addDays(origin, 15)) })
+      return
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (supabase.from('post_schedule') as any).update({ post_date: newDate, status: 'scheduled' }).eq('id', slot.id)
     setRescheduling(null)
+    fetchData()
+  }
+
+  async function confirmReschedule() {
+    if (!reschedulePrompt) return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('post_schedule') as any).update({ post_date: reschedulePrompt.suggestedDate, status: 'scheduled' }).eq('id', reschedulePrompt.slot.id)
+    setReschedulePrompt(null)
     fetchData()
   }
 
@@ -554,6 +574,42 @@ export default function SchedulePage() {
 
         </div>
       )}
+
+      {/* ── Reschedule conflict prompt ── */}
+      {reschedulePrompt && (() => {
+        const client = clientMap[reschedulePrompt.slot.client_id]
+        const formatted = new Date(reschedulePrompt.suggestedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div className="bg-[#202020] border border-[#2e2e2e] rounded-card p-6 w-full max-w-sm mx-4 shadow-2xl">
+              <div className="flex items-center gap-2 mb-3">
+                <AlertCircle size={16} className="text-[#f59e0b] flex-shrink-0" />
+                <h3 className="text-sm font-semibold text-[#e8e8e8]">No room in 7–14 days</h3>
+              </div>
+              <p className="text-xs text-[#888] mb-4 leading-relaxed">
+                Every date 1–2 weeks out already has{' '}
+                <span style={{ color: client?.color }}>{client?.name}</span> scheduled 3 days in a row.
+                The next available slot is <span className="text-[#e8e8e8] font-medium">{formatted}</span>.
+                Move it there?
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={confirmReschedule}
+                  className="flex-1 py-2 rounded-card bg-[#4f8ef7] text-white text-xs font-semibold hover:bg-[#3a7de0] transition-colors"
+                >
+                  Yes, move to {formatted}
+                </button>
+                <button
+                  onClick={() => setReschedulePrompt(null)}
+                  className="px-4 py-2 rounded-card bg-[#2e2e2e] text-[#888] text-xs hover:text-[#e8e8e8] hover:bg-[#3a3a3a] transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
