@@ -366,23 +366,28 @@ export default function ResearchPage() {
     <div className="flex flex-col h-full">
 
       {/* Header */}
-      <div className="px-6 py-4 border-b border-[#2e2e2e] flex-shrink-0 space-y-3">
-        <div className="flex items-center justify-between">
+      <div className="px-6 pt-5 pb-0 border-b border-[#2e2e2e] flex-shrink-0">
+
+        {/* Top row */}
+        <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-xl font-semibold text-[#e8e8e8]">Content Research</h1>
             <p className="text-xs text-[#888] mt-0.5">
               {mode === 'search'
                 ? `${searchResults.length} results for "${query}"`
-                : `Top short-form content from competitor accounts${lastFetched ? ` · ${new Date(lastFetched).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}`}
+                : lastFetched
+                  ? `Updated ${new Date(lastFetched).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+                  : 'Discover what\'s working across platforms'}
             </p>
           </div>
           <Button onClick={fetchTrends} disabled={loading} variant="ghost">
             <RefreshCw size={13} className={loading && mode === 'trends' ? 'animate-spin' : ''} />
-            Refresh Trends
+            Refresh
           </Button>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Search bar */}
+        <div className="flex items-center gap-2 mb-4">
           <div className="relative flex-1">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#555]" />
             <input
@@ -400,37 +405,59 @@ export default function ResearchPage() {
               </button>
             )}
           </div>
-          {(['youtube', 'tiktok', 'instagram'] as Platform[]).map(p => (
-            <button
-              key={p}
-              onClick={() => togglePlatform(p)}
-              className={`px-3 py-2 rounded-card text-xs font-medium border transition-colors ${platforms.includes(p) ? 'border-[#3a3a3a] bg-[#252525]' : 'border-[#2e2e2e] bg-transparent text-[#555] hover:text-[#888]'}`}
-              style={platforms.includes(p) ? { color: PLATFORM_COLORS[p] } : {}}
-            >
-              {PLATFORM_LABELS[p]}
-            </button>
-          ))}
           <Button onClick={() => runSearch()} disabled={!query.trim() || loading}>
             {loading && mode === 'search' ? <RefreshCw size={13} className="animate-spin" /> : <Search size={13} />}
             Search
           </Button>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] text-[#555] uppercase tracking-wide">Quick:</span>
-          {QUICK_CHIPS.map(c => (
-            <button
-              key={`${c.handle}-${c.platform}`}
-              onClick={() => chipSearch(c.handle, c.platform)}
-              className="flex items-center gap-1.5 px-2.5 py-1 bg-[#191919] border border-[#2e2e2e] rounded-full text-xs text-[#888] hover:text-[#e8e8e8] hover:border-[#3a3a3a] transition-colors"
-            >
-              <span style={{ color: PLATFORM_COLORS[c.platform], fontSize: 10 }}>
-                {c.platform === 'youtube' ? '▶' : c.platform === 'tiktok' ? '🎵' : '📸'}
-              </span>
-              {c.handle}
-            </button>
-          ))}
+        {/* Platform tabs */}
+        <div className="flex items-center gap-0 -mb-px">
+          {([
+            { key: 'youtube',   label: 'YouTube Shorts', icon: '▶', color: '#ef4444', bg: '#ef444415', border: '#ef444440' },
+            { key: 'tiktok',    label: 'TikTok',         icon: '♪', color: '#e8e8e8', bg: '#ffffff10', border: '#ffffff25' },
+            { key: 'instagram', label: 'Instagram',      icon: '◈', color: '#a855f7', bg: '#a855f715', border: '#a855f740' },
+          ] as const).map(p => {
+            const active = platforms.includes(p.key as Platform)
+            return (
+              <button
+                key={p.key}
+                onClick={() => togglePlatform(p.key as Platform)}
+                className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-all ${
+                  active
+                    ? 'border-b-2'
+                    : 'border-b-transparent text-[#555] hover:text-[#888]'
+                }`}
+                style={active ? { color: p.color, borderBottomColor: p.color } : {}}
+              >
+                <span className="text-base leading-none">{p.icon}</span>
+                {p.label}
+                {active && (
+                  <span
+                    className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                    style={{ background: p.bg, color: p.color, border: `1px solid ${p.border}` }}
+                  >
+                    ON
+                  </span>
+                )}
+              </button>
+            )
+          })}
+
+          {/* Quick account chips — right side */}
+          <div className="ml-auto flex items-center gap-1.5 pb-1 flex-wrap justify-end">
+            {QUICK_CHIPS.filter(c => platforms.includes(c.platform)).slice(0, 5).map(c => (
+              <button
+                key={`${c.handle}-${c.platform}`}
+                onClick={() => chipSearch(c.handle, c.platform)}
+                className="px-2.5 py-1 bg-[#191919] border border-[#2e2e2e] rounded-full text-[11px] text-[#888] hover:text-[#e8e8e8] hover:border-[#3a3a3a] transition-colors"
+              >
+                {c.handle}
+              </button>
+            ))}
+          </div>
         </div>
+
       </div>
 
       {/* Body */}
