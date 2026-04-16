@@ -107,7 +107,13 @@ function AnalysisPanel({
         </div>
 
         <div className="p-4 space-y-5">
-          {analysis ? (
+          {!data ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-4">
+              <RefreshCw size={28} className="animate-spin text-[#a78bfa]" />
+              <p className="text-sm text-[#888]">Analyzing with Claude…</p>
+              <p className="text-xs text-[#555]">Usually takes 5–10 seconds</p>
+            </div>
+          ) : analysis ? (
             <>
               {/* Score */}
               <div className="flex items-center gap-4">
@@ -166,6 +172,7 @@ function AnalysisPanel({
           ) : (
             <p className="text-sm text-[#888]">No analysis data available.</p>
           )}
+
 
           {transcript && (
             <details>
@@ -314,6 +321,8 @@ export default function ResearchPage() {
   async function analyzeVideo(video: TrendVideo, index: number) {
     setAnalyzing(index)
     setAnalyzeError(null)
+    // Open the panel immediately — shows loading state while API runs
+    setAnalysisPanel({ video, index })
     try {
       let videoId: string | undefined
       if (video.platform === 'youtube_shorts' || video.platform === 'youtube') {
@@ -336,18 +345,12 @@ export default function ResearchPage() {
         }),
       })
       const data = await res.json()
-      if (!res.ok) {
+      if (!res.ok || data.error) {
         console.error('Analyze error:', data)
         setAnalyzeError(index)
         return
       }
-      if (data.error) {
-        console.error('Analyze parse error:', data)
-        setAnalyzeError(index)
-        return
-      }
       setAnalyses(prev => ({ ...prev, [index]: data }))
-      setAnalysisPanel({ video, index })
     } catch (e) {
       console.error('Analyze exception:', e)
       setAnalyzeError(index)
