@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { createPortal } from 'react-dom'
 import { Search, RefreshCw, Plus, ArrowRight, ExternalLink, Eye, TrendingUp, X, Sparkles } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
@@ -72,134 +71,6 @@ function formatNum(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
   return String(n)
-}
-
-// ─── Analysis Panel Component ────────────────────────────────────────────────
-
-function AnalysisPanel({
-  video, data, onClose, onSave,
-}: {
-  video: TrendVideo
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data: any
-  onClose: () => void
-  onSave: () => void
-}) {
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => { setMounted(true) }, [])
-  if (!mounted) return null
-
-  const analysis = data?.analysis
-  const transcript = data?.transcript as string | undefined
-  const verdictColor = analysis?.verdict === 'strong' ? '#22c55e'
-    : analysis?.verdict === 'weak' ? '#ef4444' : '#f59e0b'
-
-  return createPortal(
-    <div className="fixed inset-0 z-50 bg-black/60" onClick={onClose}>
-      <div
-        className="absolute right-0 top-0 h-full w-full max-w-lg bg-[#141414] border-l border-[#2e2e2e] overflow-y-auto"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="sticky top-0 bg-[#141414] border-b border-[#2e2e2e] p-4 flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <p className="text-xs text-[#888] mb-1">{platformBadge(video.platform)}</p>
-            <p className="text-sm font-medium text-[#e8e8e8] leading-snug line-clamp-2">{video.title || '(no caption)'}</p>
-          </div>
-          <button onClick={onClose} className="text-[#555] hover:text-[#e8e8e8] transition-colors flex-shrink-0 mt-0.5">
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="p-4 space-y-5">
-          {!data ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-4">
-              <RefreshCw size={28} className="animate-spin text-[#a78bfa]" />
-              <p className="text-sm text-[#888]">Analyzing with Claude…</p>
-              <p className="text-xs text-[#555]">Usually takes 5–10 seconds</p>
-            </div>
-          ) : analysis ? (
-            <>
-              {/* Score */}
-              <div className="flex items-center gap-4">
-                <div className="text-5xl font-bold" style={{ color: verdictColor }}>{analysis.score}</div>
-                <div>
-                  <p className="text-xs text-[#888] uppercase tracking-wide mb-0.5">Score / 10</p>
-                  <p className="text-sm font-semibold capitalize" style={{ color: verdictColor }}>{analysis.verdict}</p>
-                </div>
-              </div>
-
-              {analysis.hook && (
-                <div>
-                  <p className="text-xs text-[#888] uppercase tracking-wide mb-1">🪝 Hook</p>
-                  <p className="text-sm text-[#e8e8e8]">{analysis.hook}</p>
-                </div>
-              )}
-              {analysis.structure && (
-                <div>
-                  <p className="text-xs text-[#888] uppercase tracking-wide mb-1">📐 Structure</p>
-                  <p className="text-sm text-[#e8e8e8]">{analysis.structure}</p>
-                </div>
-              )}
-              {analysis.cta && (
-                <div>
-                  <p className="text-xs text-[#888] uppercase tracking-wide mb-1">📣 CTA</p>
-                  <p className="text-sm text-[#e8e8e8]">{analysis.cta}</p>
-                </div>
-              )}
-              {analysis.why_it_worked?.length > 0 && (
-                <div>
-                  <p className="text-xs text-[#888] uppercase tracking-wide mb-1">✅ Why it worked</p>
-                  <ul className="space-y-1">
-                    {(analysis.why_it_worked as string[]).map((pt: string, j: number) => (
-                      <li key={j} className="text-sm text-[#e8e8e8] flex gap-2">
-                        <span className="text-[#555] flex-shrink-0">•</span>{pt}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {analysis.what_to_steal && (
-                <div>
-                  <p className="text-xs text-[#888] uppercase tracking-wide mb-1">💡 What to steal</p>
-                  <div className="bg-[#1a2040] border border-[#4f8ef7]/20 rounded-card p-3">
-                    <p className="text-sm text-[#e8e8e8]">{analysis.what_to_steal}</p>
-                  </div>
-                </div>
-              )}
-              {analysis.watch_out && (
-                <div>
-                  <p className="text-xs text-[#888] uppercase tracking-wide mb-1">⚠️ Watch out</p>
-                  <p className="text-sm text-[#e8e8e8]">{analysis.watch_out}</p>
-                </div>
-              )}
-            </>
-          ) : (
-            <p className="text-sm text-[#888]">No analysis data available.</p>
-          )}
-
-
-          {transcript && (
-            <details>
-              <summary className="text-xs text-[#555] hover:text-[#888] cursor-pointer select-none transition-colors">
-                View Transcript
-              </summary>
-              <div className="mt-2 max-h-40 overflow-y-auto bg-[#191919] border border-[#2e2e2e] rounded-card p-3">
-                <p className="text-xs text-[#888] leading-relaxed whitespace-pre-wrap">{transcript}</p>
-              </div>
-            </details>
-          )}
-
-          <div className="pt-2 border-t border-[#2e2e2e]">
-            <button onClick={onSave} className="flex items-center gap-1.5 text-sm text-[#4f8ef7] hover:text-[#3a7de8] transition-colors">
-              <Plus size={13} /> Save to Ideas
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>,
-    document.body
-  )
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -572,56 +443,162 @@ export default function ResearchPage() {
           )}
         </div>
 
-        {/* ── Ideas sidebar ── */}
-        <div className="w-72 border-l border-[#2e2e2e] flex flex-col flex-shrink-0">
-          <div className="p-4 border-b border-[#2e2e2e]">
-            <h2 className="text-sm font-semibold text-[#e8e8e8]">Saved Ideas</h2>
-            <p className="text-xs text-[#888] mt-0.5">{ideas.length} saved · click "Add to pipeline" to push to Content Board</p>
-          </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {ideas.length === 0 ? (
-              <p className="text-xs text-[#555] text-center pt-8">Hit "Save idea" on any video to collect it here.</p>
-            ) : ideas.map((idea, i) => (
-              <div key={i} className="bg-[#202020] border border-[#2e2e2e] rounded-card p-3 hover:border-[#3a3a3a] transition-colors">
-                <p className="text-xs text-[#e8e8e8] leading-snug mb-2">{idea}</p>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => addToContentPipeline(idea)}
-                    className="flex items-center gap-1 text-[10px] text-[#4f8ef7] hover:text-[#3a7de8] transition-colors"
-                  >
-                    <ArrowRight size={10} /> Add to pipeline
-                  </button>
-                  <button
-                    onClick={() => removeIdea(i)}
-                    className="text-[10px] text-[#555] hover:text-[#ef4444] transition-colors ml-auto"
-                  >
-                    Remove
-                  </button>
+        {/* ── Right sidebar ── */}
+        <div className="w-80 border-l border-[#2e2e2e] flex flex-col flex-shrink-0">
+          {analysisPanel ? (
+            // ── Analysis view ──
+            <>
+              <div className="p-4 border-b border-[#2e2e2e] flex items-center justify-between">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-[#888] mb-0.5">{/* platform badge */}
+                    {analysisPanel.video.platform === 'tiktok' ? '🎵 TikTok' :
+                     analysisPanel.video.platform === 'youtube_shorts' ? '▶ YT Shorts' :
+                     analysisPanel.video.platform === 'instagram' ? '📸 Reels' : '▶ YouTube'}
+                  </p>
+                  <p className="text-xs font-medium text-[#e8e8e8] line-clamp-2 leading-snug">{analysisPanel.video.title || '(no caption)'}</p>
                 </div>
+                <button
+                  onClick={() => setAnalysisPanel(null)}
+                  className="text-[#555] hover:text-[#e8e8e8] transition-colors ml-2 flex-shrink-0"
+                >
+                  <X size={14} />
+                </button>
               </div>
-            ))}
-          </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {!analyses[analysisPanel.index] ? (
+                  // Loading state
+                  <div className="flex flex-col items-center justify-center py-12 gap-3">
+                    <RefreshCw size={22} className="animate-spin text-[#a78bfa]" />
+                    <p className="text-sm text-[#888] text-center">Analyzing with Claude…</p>
+                    <p className="text-xs text-[#555] text-center">~5–10 seconds</p>
+                  </div>
+                ) : analyzeError === analysisPanel.index ? (
+                  <div className="text-center py-8">
+                    <p className="text-sm text-[#ef4444] mb-2">Analysis failed</p>
+                    <button
+                      onClick={() => analyzeVideo(analysisPanel.video, analysisPanel.index)}
+                      className="text-xs text-[#4f8ef7] hover:underline"
+                    >
+                      Try again
+                    </button>
+                  </div>
+                ) : (() => {
+                  const analysis = analyses[analysisPanel.index]?.analysis
+                  const transcript = analyses[analysisPanel.index]?.transcript as string | undefined
+                  if (!analysis) return <p className="text-sm text-[#888]">No data</p>
+                  const verdictColor = analysis.verdict === 'strong' ? '#22c55e' : analysis.verdict === 'weak' ? '#ef4444' : '#f59e0b'
+                  return (
+                    <>
+                      {/* Score */}
+                      <div className="flex items-center gap-3">
+                        <div className="text-4xl font-bold" style={{ color: verdictColor }}>{analysis.score}</div>
+                        <div>
+                          <p className="text-[10px] text-[#888] uppercase tracking-wide">Score / 10</p>
+                          <p className="text-sm font-semibold capitalize" style={{ color: verdictColor }}>{analysis.verdict}</p>
+                        </div>
+                      </div>
+
+                      {analysis.hook && (
+                        <div>
+                          <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">🪝 Hook</p>
+                          <p className="text-xs text-[#e8e8e8] leading-relaxed">{analysis.hook}</p>
+                        </div>
+                      )}
+                      {analysis.structure && (
+                        <div>
+                          <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">📐 Structure</p>
+                          <p className="text-xs text-[#e8e8e8] leading-relaxed">{analysis.structure}</p>
+                        </div>
+                      )}
+                      {analysis.cta && (
+                        <div>
+                          <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">📣 CTA</p>
+                          <p className="text-xs text-[#e8e8e8] leading-relaxed">{analysis.cta}</p>
+                        </div>
+                      )}
+                      {analysis.why_it_worked?.length > 0 && (
+                        <div>
+                          <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">✅ Why it worked</p>
+                          <ul className="space-y-1">
+                            {(analysis.why_it_worked as string[]).map((pt: string, j: number) => (
+                              <li key={j} className="text-xs text-[#e8e8e8] flex gap-1.5">
+                                <span className="text-[#555] flex-shrink-0 mt-0.5">•</span>{pt}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {analysis.what_to_steal && (
+                        <div>
+                          <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">💡 What to steal</p>
+                          <div className="bg-[#1a2040] border border-[#4f8ef7]/20 rounded-lg p-2.5">
+                            <p className="text-xs text-[#e8e8e8] leading-relaxed">{analysis.what_to_steal}</p>
+                          </div>
+                        </div>
+                      )}
+                      {analysis.watch_out && (
+                        <div>
+                          <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">⚠️ Watch out</p>
+                          <p className="text-xs text-[#e8e8e8] leading-relaxed">{analysis.watch_out}</p>
+                        </div>
+                      )}
+                      {transcript && (
+                        <details>
+                          <summary className="text-[10px] text-[#555] hover:text-[#888] cursor-pointer select-none">View Transcript</summary>
+                          <div className="mt-2 max-h-32 overflow-y-auto bg-[#191919] border border-[#2e2e2e] rounded-lg p-2">
+                            <p className="text-[10px] text-[#888] leading-relaxed whitespace-pre-wrap">{transcript}</p>
+                          </div>
+                        </details>
+                      )}
+                      <div className="pt-2 border-t border-[#2e2e2e]">
+                        <button
+                          onClick={() => { addToIdeas(analysisPanel.video); setAnalysisPanel(null) }}
+                          className="flex items-center gap-1.5 text-xs text-[#4f8ef7] hover:text-[#3a7de8] transition-colors"
+                        >
+                          <Plus size={11} /> Save to Ideas
+                        </button>
+                      </div>
+                    </>
+                  )
+                })()}
+              </div>
+            </>
+          ) : (
+            // ── Saved Ideas view ──
+            <>
+              <div className="p-4 border-b border-[#2e2e2e]">
+                <h2 className="text-sm font-semibold text-[#e8e8e8]">Saved Ideas</h2>
+                <p className="text-xs text-[#888] mt-0.5">{ideas.length} saved · click "Add to pipeline" to push to Content Board</p>
+              </div>
+              <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                {ideas.length === 0 ? (
+                  <p className="text-xs text-[#555] text-center pt-8">Hit "Save idea" on any video to collect it here.</p>
+                ) : ideas.map((idea, i) => (
+                  <div key={i} className="bg-[#202020] border border-[#2e2e2e] rounded-lg p-3 hover:border-[#3a3a3a] transition-colors">
+                    <p className="text-xs text-[#e8e8e8] leading-snug mb-2">{idea}</p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => addToContentPipeline(idea)}
+                        className="flex items-center gap-1 text-[10px] text-[#4f8ef7] hover:text-[#3a7de8] transition-colors"
+                      >
+                        <ArrowRight size={10} /> Add to pipeline
+                      </button>
+                      <button
+                        onClick={() => removeIdea(i)}
+                        className="text-[10px] text-[#555] hover:text-[#ef4444] transition-colors ml-auto"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
       </div>
-
-      {/* ── Analyzing toast ── */}
-      {analyzing !== null && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 bg-[#1e1e1e] border border-[#3a3a3a] rounded-full shadow-xl">
-          <RefreshCw size={14} className="animate-spin text-[#a78bfa]" />
-          <span className="text-sm text-[#e8e8e8]">Analyzing video with Claude…</span>
-        </div>
-      )}
-
-      {/* ── Analysis Panel ── */}
-      {analysisPanel && (
-        <AnalysisPanel
-          video={analysisPanel.video}
-          data={analyses[analysisPanel.index]}
-          onClose={() => setAnalysisPanel(null)}
-          onSave={() => { addToIdeas(analysisPanel.video); setAnalysisPanel(null) }}
-        />
-      )}
     </div>
   )
 }
