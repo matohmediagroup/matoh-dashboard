@@ -81,6 +81,7 @@ async function fetchYouTubeShorts(handle: string, label: string) {
         url: `https://youtube.com/shorts/${v.id}`,
         thumbnail: v.snippet?.thumbnails?.medium?.url || '',
         date: v.snippet?.publishedAt || '',
+        downloadUrl: '',
       }))
   } catch { return [] }
 }
@@ -115,6 +116,7 @@ async function fetchTikTokTopVideos(handle: string, label: string) {
       url: v.webVideoUrl || '',
       thumbnail: v.video?.cover || '',
       date: v.createTime ? new Date(v.createTime * 1000).toISOString() : '',
+      downloadUrl: v.video?.playAddr || v.video?.downloadAddr || '',
     }))
   } catch { return [] }
 }
@@ -155,6 +157,7 @@ async function fetchInstagramReels(handle: string, label: string) {
         url: v.url || `https://instagram.com/p/${v.shortCode}`,
         thumbnail: v.displayUrl || '',
         date: v.timestamp || '',
+        downloadUrl: v.videoUrl || '',
       }))
   } catch { return [] }
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { Search, RefreshCw, Plus, ArrowRight, ExternalLink, Eye, TrendingUp, X } from 'lucide-react'
+import { Search, RefreshCw, Plus, ArrowRight, ExternalLink, Eye, TrendingUp, X, Sparkles } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
 import { PageSpinner } from '@/components/ui/Spinner'
@@ -20,6 +20,7 @@ interface TrendVideo {
   url: string
   thumbnail: string
   date: string
+  downloadUrl?: string
 }
 
 type Platform = 'youtube' | 'tiktok' | 'instagram'
@@ -86,6 +87,9 @@ export default function ResearchPage() {
   const [loading, setLoading]           = useState(false)
   const [lastFetched, setLastFetched]   = useState<string | null>(null)
   const [clients, setClients]           = useState<Client[]>([])
+  const [analyzing, setAnalyzing]       = useState<number | null>(null)
+  const [analyses, setAnalyses]         = useState<Record<number, any>>({})
+  const [analysisPanel, setAnalysisPanel] = useState<{ video: TrendVideo; index: number } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -186,6 +190,43 @@ export default function ResearchPage() {
       title: idea, filming_status: 'not_filmed', edit_status: 'unassigned', approval_status: 'pending',
     })
     alert('Added to Content Board!')
+  }
+
+  // ── Analyze video ────────────────────────────────────────────────────────
+
+  async function analyzeVideo(video: TrendVideo, index: number) {
+    setAnalyzing(index)
+    try {
+      let videoId: string | undefined
+      if (video.platform === 'youtube_shorts' || video.platform === 'youtube') {
+        // Parse from https://youtube.com/shorts/{id} or https://youtube.com/watch?v={id}
+        const shortsMatch = video.url.match(/youtube\.com\/shorts\/([^?&/]+)/)
+        const watchMatch  = video.url.match(/[?&]v=([^&]+)/)
+        videoId = shortsMatch?.[1] || watchMatch?.[1]
+      }
+
+      const res = await fetch('/api/research/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          platform:    video.platform,
+          videoId,
+          downloadUrl: video.downloadUrl,
+          title:       video.title,
+          views:       video.views,
+          likes:       video.likes,
+          comments:    video.comments,
+        }),
+      })
+      if (!res.ok) throw new Error('Analyze request failed')
+      const data = await res.json()
+      setAnalyses(prev => ({ ...prev, [index]: data }))
+      setAnalysisPanel({ video, index })
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setAnalyzing(null)
+    }
   }
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -305,7 +346,18 @@ export default function ResearchPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {displayVideos.map((video, i) => (
-                <div key={i} className="bg-[#202020] border border-[#2e2e2e] rounded-card overflow-hidden hover:border-[#3a3a3a] transition-colors group">
+                <div key={i} className="relative bg-[#202020] border border-[#2e2e2e] rounded-card overflow-hidden hover:border-[#3a3a3a] transition-colors group">
+                  {/* Score badge */}
+                  {analyses[i] && (
+                    <div className={`absolute top-2 right-2 px-1.5 py-0.5 rounded text-[9px] font-bold z-10 ${
+                      analyses[i].analysis?.verdict === 'strong' ? 'bg-[#22c55e22] text-[#22c55e]' :
+                      analyses[i].analysis?.verdict === 'weak'   ? 'bg-[#ef444422] text-[#ef4444]' :
+                                                                    'bg-[#f59e0b22] text-[#f59e0b]'
+                    }`}>
+                      {analyses[i].analysis?.score}/10
+                    </div>
+                  )}
+
                   {/* Thumbnail */}
                   {video.thumbnail ? (
                     <div className="relative">
@@ -349,6 +401,14 @@ export default function ResearchPage() {
                         className="flex items-center gap-1 text-xs text-[#4f8ef7] hover:text-[#3a7de8] transition-colors"
                       >
                         <Plus size={11} /> Save idea
+                      </button>
+                      <button
+                        onClick={() => analyzeVideo(video, i)}
+                        disabled={analyzing === i}
+                        className="flex items-center gap-1 text-xs text-[#a78bfa] hover:text-[#c4b5fd] transition-colors disabled:opacity-50"
+                      >
+                        {analyzing === i ? <RefreshCw size={11} className="animate-spin" /> : <Sparkles size={11} />}
+                        {analyzing === i ? 'Analyzing…' : analyses[i] ? 'Re-analyze' : 'Analyze'}
                       </button>
                       <a
                         href={video.url}
@@ -398,6 +458,133 @@ export default function ResearchPage() {
         </div>
 
       </div>
+
+      {/* ── Analysis Modal ── */}
+      {analysisPanel !== null && (() => {
+        const { video, index } = analysisPanel
+        const data = analyses[index]
+        const analysis = data?.analysis
+        const transcript = data?.transcript as string | undefined
+
+        const verdictColor = analysis?.verdict === 'strong'
+          ? '#22c55e'
+          : analysis?.verdict === 'weak'
+          ? '#ef4444'
+          : '#f59e0b'
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/60" onClick={() => setAnalysisPanel(null)}>
+            <div
+              className="absolute right-0 top-0 h-full w-full max-w-lg bg-[#141414] border-l border-[#2e2e2e] overflow-y-auto"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="sticky top-0 bg-[#141414] border-b border-[#2e2e2e] p-4 flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-[#888] mb-1">{platformBadge(video.platform)}</p>
+                  <p className="text-sm font-medium text-[#e8e8e8] leading-snug line-clamp-2">{video.title || '(no caption)'}</p>
+                </div>
+                <button
+                  onClick={() => setAnalysisPanel(null)}
+                  className="text-[#555] hover:text-[#e8e8e8] transition-colors flex-shrink-0 mt-0.5"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="p-4 space-y-5">
+                {/* Score + verdict */}
+                {analysis && (
+                  <div className="flex items-center gap-4">
+                    <div className="text-5xl font-bold" style={{ color: verdictColor }}>
+                      {analysis.score}
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#888] uppercase tracking-wide mb-0.5">Score / 10</p>
+                      <p className="text-sm font-semibold capitalize" style={{ color: verdictColor }}>
+                        {analysis.verdict}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {analysis?.hook && (
+                  <div>
+                    <p className="text-xs text-[#888] uppercase tracking-wide mb-1">🪝 Hook</p>
+                    <p className="text-sm text-[#e8e8e8]">{analysis.hook}</p>
+                  </div>
+                )}
+
+                {analysis?.structure && (
+                  <div>
+                    <p className="text-xs text-[#888] uppercase tracking-wide mb-1">📐 Structure</p>
+                    <p className="text-sm text-[#e8e8e8]">{analysis.structure}</p>
+                  </div>
+                )}
+
+                {analysis?.cta && (
+                  <div>
+                    <p className="text-xs text-[#888] uppercase tracking-wide mb-1">📣 CTA</p>
+                    <p className="text-sm text-[#e8e8e8]">{analysis.cta}</p>
+                  </div>
+                )}
+
+                {analysis?.why_it_worked?.length > 0 && (
+                  <div>
+                    <p className="text-xs text-[#888] uppercase tracking-wide mb-1">✅ Why it worked</p>
+                    <ul className="space-y-1">
+                      {(analysis.why_it_worked as string[]).map((point: string, j: number) => (
+                        <li key={j} className="text-sm text-[#e8e8e8] flex gap-2">
+                          <span className="text-[#555] flex-shrink-0">•</span>
+                          {point}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {analysis?.what_to_steal && (
+                  <div>
+                    <p className="text-xs text-[#888] uppercase tracking-wide mb-1">💡 What to steal</p>
+                    <div className="bg-[#1a2040] border border-[#4f8ef7]/20 rounded-card p-3">
+                      <p className="text-sm text-[#e8e8e8]">{analysis.what_to_steal}</p>
+                    </div>
+                  </div>
+                )}
+
+                {analysis?.watch_out && (
+                  <div>
+                    <p className="text-xs text-[#888] uppercase tracking-wide mb-1">⚠️ Watch out</p>
+                    <p className="text-sm text-[#e8e8e8]">{analysis.watch_out}</p>
+                  </div>
+                )}
+
+                {/* Transcript (collapsed) */}
+                {transcript && (
+                  <details className="group">
+                    <summary className="text-xs text-[#555] hover:text-[#888] cursor-pointer select-none transition-colors">
+                      View Transcript
+                    </summary>
+                    <div className="mt-2 max-h-40 overflow-y-auto bg-[#191919] border border-[#2e2e2e] rounded-card p-3">
+                      <p className="text-xs text-[#888] leading-relaxed whitespace-pre-wrap">{transcript}</p>
+                    </div>
+                  </details>
+                )}
+
+                {/* Save to ideas */}
+                <div className="pt-2 border-t border-[#2e2e2e]">
+                  <button
+                    onClick={() => { addToIdeas(video); setAnalysisPanel(null) }}
+                    className="flex items-center gap-1.5 text-sm text-[#4f8ef7] hover:text-[#3a7de8] transition-colors"
+                  >
+                    <Plus size={13} /> Save to Ideas
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
