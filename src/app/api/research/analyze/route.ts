@@ -134,7 +134,8 @@ verdict must be "strong", "average", or "weak". score is 1-10. All other fields 
   const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY })
 
   const message = await client.messages.create({
-    model: 'claude-opus-4-5',
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    model: 'claude-opus-4-5' as any,
     max_tokens: 1024,
     messages: [{ role: 'user', content: promptText }],
   })
