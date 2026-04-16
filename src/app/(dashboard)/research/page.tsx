@@ -244,7 +244,11 @@ export default function ResearchPage() {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  const displayVideos = mode === 'search' ? searchResults : trendResults
+  const allVideos = mode === 'search' ? searchResults : trendResults
+  const displayVideos = allVideos.filter(v => {
+    if (v.platform === 'youtube_shorts' || v.platform === 'youtube') return platforms.includes('youtube')
+    return platforms.includes(v.platform as Platform)
+  })
 
   return (
     <div className="flex flex-col h-full">
