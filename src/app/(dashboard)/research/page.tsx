@@ -1,13 +1,12 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { Search, RefreshCw, Plus, ArrowRight, ExternalLink, Eye, TrendingUp, X, Sparkles } from 'lucide-react'
+import { Search, RefreshCw, Plus, ArrowRight, ExternalLink, Eye, TrendingUp, X, Zap } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
-import { PageSpinner } from '@/components/ui/Spinner'
 import type { Client } from '@/types/database'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface TrendVideo {
   handle: string
@@ -23,9 +22,20 @@ interface TrendVideo {
   downloadUrl?: string
 }
 
+interface Analysis {
+  verdict: 'strong' | 'average' | 'weak'
+  score: number
+  hook: string
+  structure: string
+  cta: string
+  why_it_worked: string[]
+  what_to_steal: string
+  watch_out: string
+}
+
 type Platform = 'youtube' | 'tiktok' | 'instagram'
 
-// ─── Preset competitor accounts ───────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const QUICK_CHIPS: { handle: string; platform: Platform; label: string }[] = [
   { handle: '@milesperhr',      platform: 'tiktok',    label: 'Miles Per Hr' },
@@ -46,24 +56,24 @@ const PLATFORM_LABELS: Record<Platform, string> = {
 }
 
 const PLATFORM_COLORS: Record<Platform, string> = {
-  youtube:   '#ef4444',
-  tiktok:    '#e8e8e8',
+  youtube: '#ef4444',
+  tiktok: '#e8e8e8',
   instagram: '#a855f7',
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function platformBadge(platform: TrendVideo['platform']) {
-  if (platform === 'tiktok')         return '🎵 TikTok'
-  if (platform === 'youtube_shorts') return '▶ YT Shorts'
-  if (platform === 'instagram')      return '📸 Reels'
+function platformBadge(p: TrendVideo['platform']) {
+  if (p === 'tiktok') return '🎵 TikTok'
+  if (p === 'youtube_shorts') return '▶ YT Shorts'
+  if (p === 'instagram') return '📸 Reels'
   return '▶ YouTube'
 }
 
-function platformColor(platform: TrendVideo['platform']) {
-  if (platform === 'tiktok')         return '#e8e8e8'
-  if (platform === 'youtube_shorts') return '#ef4444'
-  if (platform === 'instagram')      return '#a855f7'
+function platformColor(p: TrendVideo['platform']) {
+  if (p === 'tiktok') return '#e8e8e8'
+  if (p === 'youtube_shorts') return '#ef4444'
+  if (p === 'instagram') return '#a855f7'
   return '#ef4444'
 }
 
@@ -73,36 +83,51 @@ function formatNum(n: number) {
   return String(n)
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+function verdictColor(v?: string) {
+  if (v === 'strong') return '#22c55e'
+  if (v === 'weak') return '#ef4444'
+  return '#f59e0b'
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function ResearchPage() {
   const supabase = createClient()
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  const [query, setQuery]               = useState('')
-  const [platforms, setPlatforms]       = useState<Platform[]>(['youtube', 'tiktok', 'instagram'])
+  // Search / trends
+  const [query, setQuery] = useState('')
+  const [platforms, setPlatforms] = useState<Platform[]>(['youtube', 'tiktok', 'instagram'])
   const [searchResults, setSearchResults] = useState<TrendVideo[]>([])
   const [trendResults, setTrendResults] = useState<TrendVideo[]>([])
-  const [ideas, setIdeas]               = useState<string[]>([])
-  const [mode, setMode]                 = useState<'trends' | 'search'>('trends')
-  const [loading, setLoading]           = useState(false)
-  const [lastFetched, setLastFetched]   = useState<string | null>(null)
-  const [clients, setClients]           = useState<Client[]>([])
-  const [analyzing, setAnalyzing]       = useState<number | null>(null)
-  const [analyzeError, setAnalyzeError] = useState<number | null>(null)
-  const [analyses, setAnalyses]         = useState<Record<number, any>>({})
-  const [analysisPanel, setAnalysisPanel] = useState<{ video: TrendVideo; index: number } | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const [mode, setMode] = useState<'trends' | 'search'>('trends')
+  const [loading, setLoading] = useState(false)
+  const [lastFetched, setLastFetched] = useState<string | null>(null)
+
+  // Ideas
+  const [ideas, setIdeas] = useState<string[]>([])
+
+  // Analysis
+  const [activeIndex, setActiveIndex] = useState<number | null>(null)   // which card is being analyzed
+  const [activeVideo, setActiveVideo] = useState<TrendVideo | null>(null) // the video in the sidebar
+  const [activeAnalysis, setActiveAnalysis] = useState<Analysis | null>(null)
+  const [activeTranscript, setActiveTranscript] = useState<string | null>(null)
+  const [analyzeLoading, setAnalyzeLoading] = useState(false)
+  const [analyzeError, setAnalyzeError] = useState(false)
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [clients, setClients] = useState<Client[]>([])
 
   useEffect(() => {
     const saved = localStorage.getItem('matoh_research_ideas')
     if (saved) setIdeas(JSON.parse(saved))
     const savedTrends = localStorage.getItem('matoh_research_trends')
-    const savedTime   = localStorage.getItem('matoh_research_time')
+    const savedTime = localStorage.getItem('matoh_research_time')
     if (savedTrends) { setTrendResults(JSON.parse(savedTrends)); setLastFetched(savedTime) }
     supabase.from('clients').select('*').eq('status', 'active').order('name').then(({ data }) => setClients(data ?? []))
   }, [])
 
-  // ── Fetch competitor trends ──────────────────────────────────────────────
+  // ── Fetch trends ─────────────────────────────────────────────────────────────
 
   async function fetchTrends() {
     setLoading(true)
@@ -123,20 +148,19 @@ export default function ResearchPage() {
     }
   }
 
-  // ── Search ───────────────────────────────────────────────────────────────
+  // ── Search ────────────────────────────────────────────────────────────────────
 
   async function runSearch(q?: string, overridePlatforms?: Platform[]) {
-    const searchQuery = (q ?? query).trim()
-    if (!searchQuery) return
+    const sq = (q ?? query).trim()
+    if (!sq) return
     setLoading(true)
     setMode('search')
     try {
       const ps = overridePlatforms ?? platforms
-      const params = new URLSearchParams({ q: searchQuery, platforms: ps.join(',') })
+      const params = new URLSearchParams({ q: sq, platforms: ps.join(',') })
       const res = await fetch(`/api/research/search?${params}`)
       if (!res.ok) throw new Error('Failed')
-      const data = await res.json() as TrendVideo[]
-      setSearchResults(data)
+      setSearchResults(await res.json() as TrendVideo[])
     } catch (e) {
       console.error(e)
     } finally {
@@ -144,8 +168,11 @@ export default function ResearchPage() {
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') runSearch()
+  function chipSearch(handle: string, platform: Platform) {
+    setQuery(handle)
+    const ps: Platform[] = platform === 'youtube' ? ['youtube'] : [platform]
+    setPlatforms(ps)
+    runSearch(handle, ps)
   }
 
   function clearSearch() {
@@ -161,15 +188,7 @@ export default function ResearchPage() {
     )
   }
 
-  function chipSearch(handle: string, platform: Platform) {
-    const q = handle
-    setQuery(q)
-    const ps: Platform[] = platform === 'youtube' ? ['youtube'] : [platform]
-    setPlatforms(ps)
-    runSearch(q, ps)
-  }
-
-  // ── Ideas ───────────────────────────────────────────────────────────────
+  // ── Ideas ─────────────────────────────────────────────────────────────────────
 
   function addToIdeas(video: TrendVideo) {
     const idea = `[${video.label}] ${video.title}`
@@ -193,57 +212,71 @@ export default function ResearchPage() {
     alert('Added to Content Board!')
   }
 
-  // ── Analyze video ────────────────────────────────────────────────────────
+  // ── Analyze ───────────────────────────────────────────────────────────────────
 
   async function analyzeVideo(video: TrendVideo, index: number) {
-    setAnalyzing(index)
-    setAnalyzeError(null)
-    // Open the panel immediately — shows loading state while API runs
-    setAnalysisPanel({ video, index })
+    // Show sidebar immediately with loading state
+    setActiveVideo(video)
+    setActiveIndex(index)
+    setActiveAnalysis(null)
+    setActiveTranscript(null)
+    setAnalyzeLoading(true)
+    setAnalyzeError(false)
+
     try {
       let videoId: string | undefined
       if (video.platform === 'youtube_shorts' || video.platform === 'youtube') {
-        const shortsMatch = video.url.match(/youtube\.com\/shorts\/([^?&/]+)/)
-        const watchMatch  = video.url.match(/[?&]v=([^&]+)/)
-        videoId = shortsMatch?.[1] || watchMatch?.[1]
+        const m1 = video.url.match(/youtube\.com\/shorts\/([^?&/]+)/)
+        const m2 = video.url.match(/[?&]v=([^&]+)/)
+        videoId = m1?.[1] || m2?.[1]
       }
 
       const res = await fetch('/api/research/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          platform:    video.platform,
+          platform: video.platform,
           videoId,
           downloadUrl: video.downloadUrl,
-          title:       video.title,
-          views:       video.views,
-          likes:       video.likes,
-          comments:    video.comments,
+          title: video.title,
+          views: video.views,
+          likes: video.likes,
+          comments: video.comments,
         }),
       })
+
       const data = await res.json()
       if (!res.ok || data.error) {
-        console.error('Analyze error:', data)
-        setAnalyzeError(index)
+        setAnalyzeError(true)
         return
       }
-      setAnalyses(prev => ({ ...prev, [index]: data }))
+      setActiveAnalysis(data.analysis as Analysis)
+      setActiveTranscript(data.transcript ?? null)
     } catch (e) {
-      console.error('Analyze exception:', e)
-      setAnalyzeError(index)
+      console.error(e)
+      setAnalyzeError(true)
     } finally {
-      setAnalyzing(null)
+      setAnalyzeLoading(false)
     }
   }
 
-  // ── Render ───────────────────────────────────────────────────────────────
+  function closeSidebar() {
+    setActiveVideo(null)
+    setActiveIndex(null)
+    setActiveAnalysis(null)
+    setAnalyzeLoading(false)
+    setAnalyzeError(false)
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────────
 
   const displayVideos = mode === 'search' ? searchResults : trendResults
+  const showAnalysisSidebar = activeVideo !== null
 
   return (
     <div className="flex flex-col h-full">
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="px-6 py-4 border-b border-[#2e2e2e] flex-shrink-0 space-y-3">
         <div className="flex items-center justify-between">
           <div>
@@ -251,8 +284,9 @@ export default function ResearchPage() {
             <p className="text-xs text-[#888] mt-0.5">
               {mode === 'search'
                 ? `${searchResults.length} results for "${query}"`
-                : `Top short-form content from competitor accounts${lastFetched ? ` · ${new Date(lastFetched).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}`
-              }
+                : `Top short-form content from competitor accounts${lastFetched
+                    ? ` · ${new Date(lastFetched).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+                    : ''}`}
             </p>
           </div>
           <Button onClick={fetchTrends} disabled={loading} variant="ghost">
@@ -270,9 +304,9 @@ export default function ResearchPage() {
               type="text"
               value={query}
               onChange={e => setQuery(e.target.value)}
-              onKeyDown={handleKeyDown}
+              onKeyDown={e => e.key === 'Enter' && runSearch()}
               placeholder="Search keywords, #hashtags, or @accounts…"
-              className="w-full pl-9 pr-8 py-2.5 bg-[#191919] border border-[#2e2e2e] rounded-card text-sm text-[#e8e8e8] placeholder-[#555] focus:outline-none focus:border-[#4f8ef7] transition-colors"
+              className="w-full pl-9 pr-8 py-2.5 bg-[#191919] border border-[#2e2e2e] rounded-card text-sm text-[#e8e8e8] placeholder-[#555] focus:outline-none focus:border-[#4f8ef7]"
             />
             {query && (
               <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#555] hover:text-[#888]">
@@ -281,23 +315,20 @@ export default function ResearchPage() {
             )}
           </div>
 
-          {/* Platform toggles */}
-          <div className="flex items-center gap-1">
-            {(['youtube', 'tiktok', 'instagram'] as Platform[]).map(p => (
-              <button
-                key={p}
-                onClick={() => togglePlatform(p)}
-                className={`px-3 py-2 rounded-card text-xs font-medium border transition-colors ${
-                  platforms.includes(p)
-                    ? 'border-[#3a3a3a] bg-[#252525] text-[#e8e8e8]'
-                    : 'border-[#2e2e2e] bg-transparent text-[#555] hover:text-[#888]'
-                }`}
-                style={platforms.includes(p) ? { color: PLATFORM_COLORS[p] } : {}}
-              >
-                {PLATFORM_LABELS[p]}
-              </button>
-            ))}
-          </div>
+          {(['youtube', 'tiktok', 'instagram'] as Platform[]).map(p => (
+            <button
+              key={p}
+              onClick={() => togglePlatform(p)}
+              className={`px-3 py-2 rounded-card text-xs font-medium border transition-colors ${
+                platforms.includes(p)
+                  ? 'border-[#3a3a3a] bg-[#252525] text-[#e8e8e8]'
+                  : 'border-[#2e2e2e] bg-transparent text-[#555] hover:text-[#888]'
+              }`}
+              style={platforms.includes(p) ? { color: PLATFORM_COLORS[p] } : {}}
+            >
+              {PLATFORM_LABELS[p]}
+            </button>
+          ))}
 
           <Button onClick={() => runSearch()} disabled={!query.trim() || loading}>
             {loading && mode === 'search' ? <RefreshCw size={13} className="animate-spin" /> : <Search size={13} />}
@@ -305,7 +336,7 @@ export default function ResearchPage() {
           </Button>
         </div>
 
-        {/* Quick-chips */}
+        {/* Quick chips */}
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[10px] text-[#555] uppercase tracking-wide">Quick:</span>
           {QUICK_CHIPS.map(c => (
@@ -323,10 +354,10 @@ export default function ResearchPage() {
         </div>
       </div>
 
-      {/* ── Body ── */}
+      {/* Body */}
       <div className="flex-1 overflow-hidden flex">
 
-        {/* Results grid */}
+        {/* Video grid */}
         <div className="flex-1 overflow-y-auto p-6">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
@@ -340,12 +371,12 @@ export default function ResearchPage() {
               <TrendingUp size={40} className="mx-auto mb-3 text-[#555]" />
               {mode === 'search' ? (
                 <>
-                  <p className="text-[#888] text-sm mb-2">No results found for "{query}"</p>
-                  <p className="text-xs text-[#555]">Try a different keyword or account handle</p>
+                  <p className="text-[#888] text-sm mb-2">No results for "{query}"</p>
+                  <p className="text-xs text-[#555]">Try a different keyword or handle</p>
                 </>
               ) : (
                 <>
-                  <p className="text-[#888] text-sm mb-4">Search for keywords or hit "Refresh Trends" to see top competitor videos.</p>
+                  <p className="text-[#888] text-sm mb-4">Hit "Refresh Trends" to load competitor videos.</p>
                   <Button onClick={fetchTrends}>Load Competitor Trends</Button>
                 </>
               )}
@@ -353,18 +384,12 @@ export default function ResearchPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {displayVideos.map((video, i) => (
-                <div key={i} className="relative bg-[#202020] border border-[#2e2e2e] rounded-card overflow-hidden hover:border-[#3a3a3a] transition-colors group">
-                  {/* Score badge */}
-                  {analyses[i] && (
-                    <div className={`absolute top-2 right-2 px-1.5 py-0.5 rounded text-[9px] font-bold z-10 ${
-                      analyses[i].analysis?.verdict === 'strong' ? 'bg-[#22c55e22] text-[#22c55e]' :
-                      analyses[i].analysis?.verdict === 'weak'   ? 'bg-[#ef444422] text-[#ef4444]' :
-                                                                    'bg-[#f59e0b22] text-[#f59e0b]'
-                    }`}>
-                      {analyses[i].analysis?.score}/10
-                    </div>
-                  )}
-
+                <div
+                  key={i}
+                  className={`bg-[#202020] border rounded-card overflow-hidden transition-colors ${
+                    activeIndex === i ? 'border-[#a78bfa]' : 'border-[#2e2e2e] hover:border-[#3a3a3a]'
+                  }`}
+                >
                   {/* Thumbnail */}
                   {video.thumbnail ? (
                     <div className="relative">
@@ -375,20 +400,14 @@ export default function ResearchPage() {
                         onError={e => { (e.target as HTMLImageElement).parentElement!.style.display = 'none' }}
                       />
                       <div className="absolute top-2 left-2">
-                        <span
-                          className="px-2 py-0.5 rounded text-[10px] font-semibold"
-                          style={{ background: 'rgba(0,0,0,0.7)', color: platformColor(video.platform) }}
-                        >
+                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold" style={{ background: 'rgba(0,0,0,0.7)', color: platformColor(video.platform) }}>
                           {platformBadge(video.platform)}
                         </span>
                       </div>
                     </div>
                   ) : (
                     <div className="h-10 flex items-center px-3">
-                      <span
-                        className="px-2 py-0.5 rounded text-[10px] font-semibold"
-                        style={{ background: '#252525', color: platformColor(video.platform) }}
-                      >
+                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold" style={{ background: '#252525', color: platformColor(video.platform) }}>
                         {platformBadge(video.platform)}
                       </span>
                     </div>
@@ -402,6 +421,8 @@ export default function ResearchPage() {
                       <span>♥ {formatNum(video.likes)}</span>
                       <span>💬 {formatNum(video.comments)}</span>
                     </div>
+
+                    {/* Action row */}
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => addToIdeas(video)}
@@ -409,24 +430,15 @@ export default function ResearchPage() {
                       >
                         <Plus size={11} /> Save idea
                       </button>
+
                       <button
-                        onClick={() => { setAnalyzeError(null); analyzeVideo(video, i) }}
-                        disabled={analyzing === i}
-                        className={`flex items-center gap-1 text-xs transition-colors disabled:opacity-50 ${
-                          analyzeError === i
-                            ? 'text-[#ef4444] hover:text-[#f87171]'
-                            : 'text-[#a78bfa] hover:text-[#c4b5fd]'
-                        }`}
+                        onClick={() => analyzeVideo(video, i)}
+                        className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded bg-[#2a1f3d] text-[#c4b5fd] hover:bg-[#3d2d5c] transition-colors"
                       >
-                        {analyzing === i
-                          ? <RefreshCw size={11} className="animate-spin" />
-                          : <Sparkles size={11} />}
-                        {analyzing === i
-                          ? 'Analyzing…'
-                          : analyzeError === i
-                          ? 'Failed — retry?'
-                          : analyses[i] ? 'Re-analyze' : 'Analyze'}
+                        <Zap size={11} />
+                        {activeIndex === i && analyzeLoading ? 'Analyzing…' : 'Analyze'}
                       </button>
+
                       <a
                         href={video.url}
                         target="_blank"
@@ -443,131 +455,132 @@ export default function ResearchPage() {
           )}
         </div>
 
-        {/* ── Right sidebar ── */}
+        {/* Right sidebar — toggles between Saved Ideas and Analysis */}
         <div className="w-80 border-l border-[#2e2e2e] flex flex-col flex-shrink-0">
-          {analysisPanel ? (
-            // ── Analysis view ──
+
+          {showAnalysisSidebar ? (
+            /* ── Analysis panel ── */
             <>
-              <div className="p-4 border-b border-[#2e2e2e] flex items-center justify-between">
+              <div className="p-4 border-b border-[#2e2e2e] flex items-start justify-between gap-2 flex-shrink-0">
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-[#888] mb-0.5">{/* platform badge */}
-                    {analysisPanel.video.platform === 'tiktok' ? '🎵 TikTok' :
-                     analysisPanel.video.platform === 'youtube_shorts' ? '▶ YT Shorts' :
-                     analysisPanel.video.platform === 'instagram' ? '📸 Reels' : '▶ YouTube'}
-                  </p>
-                  <p className="text-xs font-medium text-[#e8e8e8] line-clamp-2 leading-snug">{analysisPanel.video.title || '(no caption)'}</p>
+                  <p className="text-[10px] text-[#888] mb-0.5">{platformBadge(activeVideo.platform)}</p>
+                  <p className="text-xs font-medium text-[#e8e8e8] line-clamp-2 leading-snug">{activeVideo.title || '(no caption)'}</p>
                 </div>
-                <button
-                  onClick={() => setAnalysisPanel(null)}
-                  className="text-[#555] hover:text-[#e8e8e8] transition-colors ml-2 flex-shrink-0"
-                >
+                <button onClick={closeSidebar} className="text-[#555] hover:text-[#e8e8e8] transition-colors flex-shrink-0">
                   <X size={14} />
                 </button>
               </div>
 
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {!analyses[analysisPanel.index] ? (
-                  // Loading state
-                  <div className="flex flex-col items-center justify-center py-12 gap-3">
-                    <RefreshCw size={22} className="animate-spin text-[#a78bfa]" />
-                    <p className="text-sm text-[#888] text-center">Analyzing with Claude…</p>
-                    <p className="text-xs text-[#555] text-center">~5–10 seconds</p>
+                {analyzeLoading && (
+                  <div className="flex flex-col items-center justify-center py-16 gap-3">
+                    <RefreshCw size={24} className="animate-spin text-[#a78bfa]" />
+                    <p className="text-sm text-[#888]">Analyzing with Claude…</p>
+                    <p className="text-xs text-[#555]">~5–10 seconds</p>
                   </div>
-                ) : analyzeError === analysisPanel.index ? (
-                  <div className="text-center py-8">
-                    <p className="text-sm text-[#ef4444] mb-2">Analysis failed</p>
-                    <button
-                      onClick={() => analyzeVideo(analysisPanel.video, analysisPanel.index)}
-                      className="text-xs text-[#4f8ef7] hover:underline"
-                    >
+                )}
+
+                {analyzeError && !analyzeLoading && (
+                  <div className="text-center py-10">
+                    <p className="text-sm text-[#ef4444] mb-3">Analysis failed</p>
+                    <button onClick={() => analyzeVideo(activeVideo, activeIndex!)} className="text-xs text-[#4f8ef7] hover:underline">
                       Try again
                     </button>
                   </div>
-                ) : (() => {
-                  const analysis = analyses[analysisPanel.index]?.analysis
-                  const transcript = analyses[analysisPanel.index]?.transcript as string | undefined
-                  if (!analysis) return <p className="text-sm text-[#888]">No data</p>
-                  const verdictColor = analysis.verdict === 'strong' ? '#22c55e' : analysis.verdict === 'weak' ? '#ef4444' : '#f59e0b'
-                  return (
-                    <>
-                      {/* Score */}
-                      <div className="flex items-center gap-3">
-                        <div className="text-4xl font-bold" style={{ color: verdictColor }}>{analysis.score}</div>
-                        <div>
-                          <p className="text-[10px] text-[#888] uppercase tracking-wide">Score / 10</p>
-                          <p className="text-sm font-semibold capitalize" style={{ color: verdictColor }}>{analysis.verdict}</p>
-                        </div>
-                      </div>
+                )}
 
-                      {analysis.hook && (
-                        <div>
-                          <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">🪝 Hook</p>
-                          <p className="text-xs text-[#e8e8e8] leading-relaxed">{analysis.hook}</p>
-                        </div>
-                      )}
-                      {analysis.structure && (
-                        <div>
-                          <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">📐 Structure</p>
-                          <p className="text-xs text-[#e8e8e8] leading-relaxed">{analysis.structure}</p>
-                        </div>
-                      )}
-                      {analysis.cta && (
-                        <div>
-                          <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">📣 CTA</p>
-                          <p className="text-xs text-[#e8e8e8] leading-relaxed">{analysis.cta}</p>
-                        </div>
-                      )}
-                      {analysis.why_it_worked?.length > 0 && (
-                        <div>
-                          <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">✅ Why it worked</p>
-                          <ul className="space-y-1">
-                            {(analysis.why_it_worked as string[]).map((pt: string, j: number) => (
-                              <li key={j} className="text-xs text-[#e8e8e8] flex gap-1.5">
-                                <span className="text-[#555] flex-shrink-0 mt-0.5">•</span>{pt}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      {analysis.what_to_steal && (
-                        <div>
-                          <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">💡 What to steal</p>
-                          <div className="bg-[#1a2040] border border-[#4f8ef7]/20 rounded-lg p-2.5">
-                            <p className="text-xs text-[#e8e8e8] leading-relaxed">{analysis.what_to_steal}</p>
-                          </div>
-                        </div>
-                      )}
-                      {analysis.watch_out && (
-                        <div>
-                          <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">⚠️ Watch out</p>
-                          <p className="text-xs text-[#e8e8e8] leading-relaxed">{analysis.watch_out}</p>
-                        </div>
-                      )}
-                      {transcript && (
-                        <details>
-                          <summary className="text-[10px] text-[#555] hover:text-[#888] cursor-pointer select-none">View Transcript</summary>
-                          <div className="mt-2 max-h-32 overflow-y-auto bg-[#191919] border border-[#2e2e2e] rounded-lg p-2">
-                            <p className="text-[10px] text-[#888] leading-relaxed whitespace-pre-wrap">{transcript}</p>
-                          </div>
-                        </details>
-                      )}
-                      <div className="pt-2 border-t border-[#2e2e2e]">
-                        <button
-                          onClick={() => { addToIdeas(analysisPanel.video); setAnalysisPanel(null) }}
-                          className="flex items-center gap-1.5 text-xs text-[#4f8ef7] hover:text-[#3a7de8] transition-colors"
-                        >
-                          <Plus size={11} /> Save to Ideas
-                        </button>
+                {activeAnalysis && !analyzeLoading && (
+                  <>
+                    {/* Score */}
+                    <div className="flex items-center gap-3 pb-3 border-b border-[#2e2e2e]">
+                      <div className="text-4xl font-bold" style={{ color: verdictColor(activeAnalysis.verdict) }}>
+                        {activeAnalysis.score}
                       </div>
-                    </>
-                  )
-                })()}
+                      <div>
+                        <p className="text-[10px] text-[#888] uppercase tracking-wide">Score / 10</p>
+                        <p className="text-sm font-semibold capitalize" style={{ color: verdictColor(activeAnalysis.verdict) }}>
+                          {activeAnalysis.verdict}
+                        </p>
+                      </div>
+                    </div>
+
+                    {activeAnalysis.hook && (
+                      <div>
+                        <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">🪝 Hook</p>
+                        <p className="text-xs text-[#e8e8e8] leading-relaxed">{activeAnalysis.hook}</p>
+                      </div>
+                    )}
+
+                    {activeAnalysis.structure && (
+                      <div>
+                        <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">📐 Structure</p>
+                        <p className="text-xs text-[#e8e8e8] leading-relaxed">{activeAnalysis.structure}</p>
+                      </div>
+                    )}
+
+                    {activeAnalysis.cta && (
+                      <div>
+                        <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">📣 CTA</p>
+                        <p className="text-xs text-[#e8e8e8] leading-relaxed">{activeAnalysis.cta}</p>
+                      </div>
+                    )}
+
+                    {activeAnalysis.why_it_worked?.length > 0 && (
+                      <div>
+                        <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">✅ Why it worked</p>
+                        <ul className="space-y-1.5">
+                          {activeAnalysis.why_it_worked.map((pt, j) => (
+                            <li key={j} className="text-xs text-[#e8e8e8] flex gap-1.5">
+                              <span className="text-[#555] flex-shrink-0">•</span>{pt}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {activeAnalysis.what_to_steal && (
+                      <div>
+                        <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">💡 What to steal</p>
+                        <div className="bg-[#1a2040] border border-[#4f8ef7]/20 rounded-lg p-2.5">
+                          <p className="text-xs text-[#e8e8e8] leading-relaxed">{activeAnalysis.what_to_steal}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {activeAnalysis.watch_out && (
+                      <div>
+                        <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">⚠️ Watch out</p>
+                        <p className="text-xs text-[#e8e8e8] leading-relaxed">{activeAnalysis.watch_out}</p>
+                      </div>
+                    )}
+
+                    {activeTranscript && (
+                      <details>
+                        <summary className="text-[10px] text-[#555] hover:text-[#888] cursor-pointer select-none">
+                          View Transcript
+                        </summary>
+                        <div className="mt-2 max-h-32 overflow-y-auto bg-[#191919] border border-[#2e2e2e] rounded-lg p-2">
+                          <p className="text-[10px] text-[#888] leading-relaxed whitespace-pre-wrap">{activeTranscript}</p>
+                        </div>
+                      </details>
+                    )}
+
+                    <div className="pt-2 border-t border-[#2e2e2e]">
+                      <button
+                        onClick={() => { addToIdeas(activeVideo); closeSidebar() }}
+                        className="flex items-center gap-1.5 text-xs text-[#4f8ef7] hover:text-[#3a7de8] transition-colors"
+                      >
+                        <Plus size={11} /> Save to Ideas
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </>
           ) : (
-            // ── Saved Ideas view ──
+            /* ── Saved Ideas panel ── */
             <>
-              <div className="p-4 border-b border-[#2e2e2e]">
+              <div className="p-4 border-b border-[#2e2e2e] flex-shrink-0">
                 <h2 className="text-sm font-semibold text-[#e8e8e8]">Saved Ideas</h2>
                 <p className="text-xs text-[#888] mt-0.5">{ideas.length} saved · click "Add to pipeline" to push to Content Board</p>
               </div>
@@ -575,7 +588,7 @@ export default function ResearchPage() {
                 {ideas.length === 0 ? (
                   <p className="text-xs text-[#555] text-center pt-8">Hit "Save idea" on any video to collect it here.</p>
                 ) : ideas.map((idea, i) => (
-                  <div key={i} className="bg-[#202020] border border-[#2e2e2e] rounded-lg p-3 hover:border-[#3a3a3a] transition-colors">
+                  <div key={i} className="bg-[#202020] border border-[#2e2e2e] rounded-card p-3 hover:border-[#3a3a3a] transition-colors">
                     <p className="text-xs text-[#e8e8e8] leading-snug mb-2">{idea}</p>
                     <div className="flex items-center gap-2">
                       <button
@@ -596,8 +609,8 @@ export default function ResearchPage() {
               </div>
             </>
           )}
-        </div>
 
+        </div>
       </div>
     </div>
   )
