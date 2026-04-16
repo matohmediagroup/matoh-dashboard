@@ -51,8 +51,8 @@ async function getAssemblyAITranscript(downloadUrl: string): Promise<string | nu
     const transcriptId = submitData?.id
     if (!transcriptId) return null
 
-    // Poll every 3s up to 30s
-    const maxAttempts = 10
+    // Poll every 3s up to 45s
+    const maxAttempts = 15
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise(r => setTimeout(r, 3000))
       const pollRes = await fetch(`https://api.assemblyai.com/v2/transcript/${transcriptId}`, {
@@ -84,12 +84,16 @@ export async function POST(req: NextRequest) {
 
   const { platform, videoId, downloadUrl, title, views, likes, comments } = body
 
-  // ── Get transcript ──────────────────────────────────────────────────────────
+  // ── Get transcript via AssemblyAI ───────────────────────────────────────────
   let transcript: string | null = null
 
   if (platform === 'youtube_shorts' || platform === 'youtube') {
+    // AssemblyAI accepts YouTube URLs directly
     if (videoId) {
-      transcript = await getYouTubeTranscript(videoId)
+      const youtubeUrl = videoId.length > 11
+        ? videoId  // already a full URL
+        : `https://www.youtube.com/watch?v=${videoId}`
+      transcript = await getAssemblyAITranscript(youtubeUrl)
     }
   } else if (platform === 'tiktok' || platform === 'instagram') {
     if (downloadUrl) {
