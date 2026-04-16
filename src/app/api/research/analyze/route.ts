@@ -121,14 +121,22 @@ Respond in this EXACT JSON format (no markdown, just raw JSON):
   "verdict": "strong",
   "score": 8,
   "hook": "...",
-  "structure": "...",
+  "body": "...",
   "cta": "...",
   "why_it_worked": ["...", "...", "..."],
   "what_to_steal": "...",
   "watch_out": "..."
 }
 
-verdict must be "strong", "average", or "weak". score is 1-10. All other fields are strings/arrays of strings.`
+Rules:
+- verdict: "strong", "average", or "weak"
+- score: 1-10
+- hook: the ACTUAL opening words/lines from the transcript that serve as the hook (verbatim quote). If no transcript, describe what the title suggests the hook is.
+- body: the ACTUAL main content from the transcript — what the video talks about in the middle (verbatim or close paraphrase). If no transcript, summarize based on title.
+- cta: the ACTUAL call-to-action words spoken or shown at the end (verbatim quote). If no transcript, note what CTA the title implies or write "No CTA detected".
+- why_it_worked: 3 bullet points analyzing WHY this video performed well (engagement, topic, format, etc.)
+- what_to_steal: one specific tactic a car dealership could copy for their own content
+- watch_out: one thing to avoid or be careful about`
 
   // ── Call Claude ─────────────────────────────────────────────────────────────
   const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY })

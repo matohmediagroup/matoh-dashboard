@@ -26,7 +26,7 @@ interface Analysis {
   verdict: 'strong' | 'average' | 'weak'
   score: number
   hook: string
-  structure: string
+  body: string
   cta: string
   why_it_worked: string[]
   what_to_steal: string
@@ -530,22 +530,54 @@ export default function ResearchPage() {
                               <p className="text-sm font-semibold capitalize" style={{ color: verdictColor(a.verdict) }}>{a.verdict}</p>
                             </div>
                           </div>
-                          {a.hook && <div><p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">🪝 Hook</p><p className="text-xs text-[#e8e8e8] leading-relaxed">{a.hook}</p></div>}
-                          {a.structure && <div><p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">📐 Structure</p><p className="text-xs text-[#e8e8e8] leading-relaxed">{a.structure}</p></div>}
-                          {a.cta && <div><p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">📣 CTA</p><p className="text-xs text-[#e8e8e8] leading-relaxed">{a.cta}</p></div>}
-                          {a.why_it_worked?.length > 0 && (
+                          {/* ── Transcript sections ── */}
+                          {a.hook && (
                             <div>
-                              <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">✅ Why it worked</p>
-                              <ul className="space-y-1.5">{a.why_it_worked.map((pt, j) => <li key={j} className="text-xs text-[#e8e8e8] flex gap-1.5"><span className="text-[#555]">•</span>{pt}</li>)}</ul>
+                              <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">🪝 Hook</p>
+                              <blockquote className="border-l-2 border-[#4f8ef7]/40 pl-3">
+                                <p className="text-xs text-[#e8e8e8] leading-relaxed italic">{a.hook}</p>
+                              </blockquote>
                             </div>
                           )}
-                          {a.what_to_steal && (
+                          {a.body && (
                             <div>
-                              <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">💡 What to steal</p>
-                              <div className="bg-[#1a2040] border border-[#4f8ef7]/20 rounded-lg p-2.5"><p className="text-xs text-[#e8e8e8] leading-relaxed">{a.what_to_steal}</p></div>
+                              <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">📄 Body</p>
+                              <blockquote className="border-l-2 border-[#4f8ef7]/40 pl-3">
+                                <p className="text-xs text-[#e8e8e8] leading-relaxed italic">{a.body}</p>
+                              </blockquote>
                             </div>
                           )}
-                          {a.watch_out && <div><p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">⚠️ Watch out</p><p className="text-xs text-[#e8e8e8] leading-relaxed">{a.watch_out}</p></div>}
+                          {a.cta && (
+                            <div>
+                              <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">📣 CTA</p>
+                              <blockquote className="border-l-2 border-[#4f8ef7]/40 pl-3">
+                                <p className="text-xs text-[#e8e8e8] leading-relaxed italic">{a.cta}</p>
+                              </blockquote>
+                            </div>
+                          )}
+
+                          {/* ── Analysis ── */}
+                          <div className="pt-3 border-t border-[#2e2e2e]">
+                            <p className="text-[10px] text-[#555] uppercase tracking-wide mb-3">Analysis</p>
+                            {a.why_it_worked?.length > 0 && (
+                              <div className="mb-3">
+                                <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">✅ Why it worked</p>
+                                <ul className="space-y-1.5">{a.why_it_worked.map((pt, j) => <li key={j} className="text-xs text-[#e8e8e8] flex gap-1.5"><span className="text-[#555]">•</span>{pt}</li>)}</ul>
+                              </div>
+                            )}
+                            {a.what_to_steal && (
+                              <div className="mb-3">
+                                <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">💡 What to steal</p>
+                                <div className="bg-[#1a2040] border border-[#4f8ef7]/20 rounded-lg p-2.5"><p className="text-xs text-[#e8e8e8] leading-relaxed">{a.what_to_steal}</p></div>
+                              </div>
+                            )}
+                            {a.watch_out && (
+                              <div>
+                                <p className="text-[10px] text-[#888] uppercase tracking-wide mb-1">⚠️ Watch out</p>
+                                <p className="text-xs text-[#e8e8e8] leading-relaxed">{a.watch_out}</p>
+                              </div>
+                            )}
+                          </div>
                           <div className="pt-2 border-t border-[#2e2e2e] flex items-center gap-3">
                             <button onClick={() => addToIdeas(sidebarVideo.video)} className="flex items-center gap-1.5 text-xs text-[#4f8ef7] hover:text-[#3a7de8] transition-colors"><Plus size={11} /> Save idea</button>
                             <a href={sidebarVideo.video.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs text-[#555] hover:text-[#888] transition-colors ml-auto"><ExternalLink size={11} /> Watch on platform</a>
