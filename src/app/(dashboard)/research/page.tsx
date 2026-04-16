@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { Search, RefreshCw, Plus, ArrowRight, ExternalLink, Eye, TrendingUp, X, Sparkles } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
@@ -84,12 +85,16 @@ function AnalysisPanel({
   onClose: () => void
   onSave: () => void
 }) {
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+  if (!mounted) return null
+
   const analysis = data?.analysis
   const transcript = data?.transcript as string | undefined
   const verdictColor = analysis?.verdict === 'strong' ? '#22c55e'
     : analysis?.verdict === 'weak' ? '#ef4444' : '#f59e0b'
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 bg-black/60" onClick={onClose}>
       <div
         className="absolute right-0 top-0 h-full w-full max-w-lg bg-[#141414] border-l border-[#2e2e2e] overflow-y-auto"
@@ -192,7 +197,8 @@ function AnalysisPanel({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
