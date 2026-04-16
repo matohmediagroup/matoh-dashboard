@@ -7,12 +7,62 @@ import Anthropic from '@anthropic-ai/sdk'
 const ASSEMBLY_AI_API_KEY = process.env.ASSEMBLY_AI_API_KEY
 const ANTHROPIC_API_KEY   = process.env.ANTHROPIC_API_KEY
 
-// ── Step 1: Upload binary to AssemblyAI storage ───────────────────────────────
-// For TikTok/Instagram: CDN URLs are short-lived and block external access.
-// We download the video on our server and upload it to AssemblyAI so they
-// always have a stable, accessible file to transcribe.
+// ── YouTube captions ──────────────────────────────────────────────────────────
+// AssemblyAI does NOT support YouTube page URLs — it needs a direct audio file.
+// YouTube's timedtext API returns the same ASR output YouTube uses internally.
 
-async function uploadBinaryToAssemblyAI(buffer: ArrayBuffer): Promise<string | null> {
+async function getYouTubeCaptions(videoId: string): Promise<{ text: string; source: 'captions' } | null> {
+  try {
+    const res = await fetch(
+      `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&fmt=json3`
+    )
+    if (!res.ok) return null
+    const data = await res.json() as { events?: { segs?: { utf8?: string }[] }[] }
+    if (!data?.events?.length) return null
+
+    const text = data.events
+      .flatMap(e => e.segs ?? [])
+      .map(s => s.utf8 ?? '')
+      .join('')
+      .replace(/\n/g, ' ')
+      .trim()
+
+    return text ? { text, source: 'captions' } : null
+  } catch {
+    return null
+  }
+}
+
+// ── TikTok / Instagram: download → upload → AssemblyAI ───────────────────────
+// CDN URLs from these platforms expire and block external fetches.
+// We download the video on our server first, upload it to AssemblyAI storage,
+// then transcribe from the stable upload URL.
+
+async function downloadVideo(url: string, platform: string): Promise<ArrayBuffer | null> {
+  try {
+    const headers: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'video/mp4,video/*;q=0.9,*/*;q=0.8',
+    }
+    if (platform === 'tiktok') {
+      headers['Referer'] = 'https://www.tiktok.com/'
+      headers['Origin']  = 'https://www.tiktok.com'
+    } else if (platform === 'instagram') {
+      headers['Referer'] = 'https://www.instagram.com/'
+      headers['Origin']  = 'https://www.instagram.com'
+    }
+
+    const res = await fetch(url, { headers })
+    if (!res.ok) return null
+
+    const buffer = await res.arrayBuffer()
+    return buffer.byteLength > 1000 ? buffer : null  // reject empty/error responses
+  } catch {
+    return null
+  }
+}
+
+async function uploadToAssemblyAI(buffer: ArrayBuffer): Promise<string | null> {
   if (!ASSEMBLY_AI_API_KEY) return null
   try {
     const res = await fetch('https://api.assemblyai.com/v2/upload', {
@@ -31,31 +81,6 @@ async function uploadBinaryToAssemblyAI(buffer: ArrayBuffer): Promise<string | n
   }
 }
 
-// ── Step 2: Download video from platform CDN ──────────────────────────────────
-
-async function downloadVideo(url: string, platform: string): Promise<ArrayBuffer | null> {
-  try {
-    const headers: Record<string, string> = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': '*/*',
-    }
-    if (platform === 'tiktok') {
-      headers['Referer'] = 'https://www.tiktok.com/'
-      headers['Origin']  = 'https://www.tiktok.com'
-    } else if (platform === 'instagram') {
-      headers['Referer'] = 'https://www.instagram.com/'
-      headers['Origin']  = 'https://www.instagram.com'
-    }
-    const res = await fetch(url, { headers })
-    if (!res.ok) return null
-    return await res.arrayBuffer()
-  } catch {
-    return null
-  }
-}
-
-// ── Step 3: Submit to AssemblyAI and poll ─────────────────────────────────────
-
 async function transcribeWithAssemblyAI(audioUrl: string): Promise<string | null> {
   if (!ASSEMBLY_AI_API_KEY) return null
   try {
@@ -71,7 +96,7 @@ async function transcribeWithAssemblyAI(audioUrl: string): Promise<string | null
     const submitData = await submitRes.json() as { id?: string; error?: string }
     if (!submitData?.id) return null
 
-    // Poll every 3s — up to 60s total
+    // Poll every 3s — up to 60s
     for (let i = 0; i < 20; i++) {
       await new Promise(r => setTimeout(r, 3000))
       const pollRes = await fetch(
@@ -87,6 +112,20 @@ async function transcribeWithAssemblyAI(audioUrl: string): Promise<string | null
   } catch {
     return null
   }
+}
+
+async function transcribeVideoUrl(
+  downloadUrl: string,
+  platform: string
+): Promise<{ text: string; source: 'assemblyai' } | null> {
+  const buffer = await downloadVideo(downloadUrl, platform)
+  if (!buffer) return null
+
+  const uploadUrl = await uploadToAssemblyAI(buffer)
+  if (!uploadUrl) return null
+
+  const text = await transcribeWithAssemblyAI(uploadUrl)
+  return text ? { text, source: 'assemblyai' } : null
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -105,26 +144,17 @@ export async function POST(req: NextRequest) {
   const { platform, videoId, downloadUrl, title, views, likes, comments } = body
 
   // ── Transcribe ──────────────────────────────────────────────────────────────
-  let transcript: string | null = null
-  let transcriptSource: 'assemblyai' | 'none' = 'none'
+  let transcriptText: string | null = null
+  let transcriptSource: 'assemblyai' | 'captions' | 'none' = 'none'
 
   if (platform === 'youtube_shorts' || platform === 'youtube') {
-    // AssemblyAI natively supports YouTube URLs — pass directly
     if (videoId) {
-      const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`
-      transcript = await transcribeWithAssemblyAI(youtubeUrl)
-      if (transcript) transcriptSource = 'assemblyai'
+      const result = await getYouTubeCaptions(videoId)
+      if (result) { transcriptText = result.text; transcriptSource = result.source }
     }
   } else if ((platform === 'tiktok' || platform === 'instagram') && downloadUrl) {
-    // Download video on our server → upload to AssemblyAI → transcribe
-    const buffer = await downloadVideo(downloadUrl, platform)
-    if (buffer && buffer.byteLength > 0) {
-      const uploadUrl = await uploadBinaryToAssemblyAI(buffer)
-      if (uploadUrl) {
-        transcript = await transcribeWithAssemblyAI(uploadUrl)
-        if (transcript) transcriptSource = 'assemblyai'
-      }
-    }
+    const result = await transcribeVideoUrl(downloadUrl, platform)
+    if (result) { transcriptText = result.text; transcriptSource = result.source }
   }
 
   // ── Build Claude prompt ─────────────────────────────────────────────────────
@@ -132,8 +162,8 @@ export async function POST(req: NextRequest) {
     ? (((likes + comments) / views) * 100).toFixed(2)
     : '0.00'
 
-  const transcriptSection = transcript
-    ? `TRANSCRIPT (real audio transcription):\n"${transcript.slice(0, 3000)}"`
+  const transcriptSection = transcriptText
+    ? `TRANSCRIPT:\n"${transcriptText.slice(0, 3000)}"`
     : `NO TRANSCRIPT AVAILABLE — analyze from caption/title and engagement metrics only.`
 
   const promptText = `You are a short-form video strategist for a car dealership content agency. Analyze this ${platform} video.
@@ -162,7 +192,7 @@ Rules:
 - verdict: "strong", "average", or "weak"
 - score: 1-10
 - hook: the ACTUAL opening words/lines from the transcript (verbatim). If no transcript, infer from title.
-- body: the ACTUAL main content from the transcript — what is said in the middle (verbatim or close paraphrase). If no transcript, summarize from title.
+- body: the ACTUAL main content from the transcript — what is said in the middle. If no transcript, summarize from title.
 - cta: the ACTUAL call-to-action words spoken at the end (verbatim). If no transcript, write "No CTA detected".
 - why_it_worked: 3 bullet points on WHY this video performed well
 - what_to_steal: one specific tactic a car dealership could copy
@@ -194,5 +224,5 @@ Rules:
     }
   }
 
-  return NextResponse.json({ transcript, transcriptSource, analysis })
+  return NextResponse.json({ transcript: transcriptText, transcriptSource, analysis })
 }

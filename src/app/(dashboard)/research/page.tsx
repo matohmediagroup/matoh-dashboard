@@ -100,7 +100,7 @@ export default function ResearchPage() {
 
   // Per-video analysis
   const [analyses, setAnalyses] = useState<Record<number, Analysis>>({})
-  const [transcriptSources, setTranscriptSources] = useState<Record<number, 'assemblyai' | 'none'>>({})
+  const [transcriptSources, setTranscriptSources] = useState<Record<number, 'assemblyai' | 'captions' | 'none'>>({})
   const [analyzing, setAnalyzing] = useState<number | null>(null)
 
   // Sidebar
@@ -538,7 +538,11 @@ export default function ResearchPage() {
                           <div className="flex items-center gap-1.5">
                             {transcriptSources[sidebarVideo.index] === 'assemblyai' ? (
                               <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-[#14532d] text-[#4ade80] font-medium">
-                                🎙 Real transcription
+                                🎙 AssemblyAI transcription
+                              </span>
+                            ) : transcriptSources[sidebarVideo.index] === 'captions' ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-[#1a2f1a] text-[#86efac] font-medium">
+                                ▶ YouTube captions
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-[#3f2a00] text-[#f59e0b] font-medium">
