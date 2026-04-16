@@ -88,6 +88,7 @@ export default function ResearchPage() {
   const [lastFetched, setLastFetched]   = useState<string | null>(null)
   const [clients, setClients]           = useState<Client[]>([])
   const [analyzing, setAnalyzing]       = useState<number | null>(null)
+  const [analyzeError, setAnalyzeError] = useState<number | null>(null)
   const [analyses, setAnalyses]         = useState<Record<number, any>>({})
   const [analysisPanel, setAnalysisPanel] = useState<{ video: TrendVideo; index: number } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -196,10 +197,10 @@ export default function ResearchPage() {
 
   async function analyzeVideo(video: TrendVideo, index: number) {
     setAnalyzing(index)
+    setAnalyzeError(null)
     try {
       let videoId: string | undefined
       if (video.platform === 'youtube_shorts' || video.platform === 'youtube') {
-        // Parse from https://youtube.com/shorts/{id} or https://youtube.com/watch?v={id}
         const shortsMatch = video.url.match(/youtube\.com\/shorts\/([^?&/]+)/)
         const watchMatch  = video.url.match(/[?&]v=([^&]+)/)
         videoId = shortsMatch?.[1] || watchMatch?.[1]
@@ -218,12 +219,22 @@ export default function ResearchPage() {
           comments:    video.comments,
         }),
       })
-      if (!res.ok) throw new Error('Analyze request failed')
       const data = await res.json()
+      if (!res.ok) {
+        console.error('Analyze error:', data)
+        setAnalyzeError(index)
+        return
+      }
+      if (data.error) {
+        console.error('Analyze parse error:', data)
+        setAnalyzeError(index)
+        return
+      }
       setAnalyses(prev => ({ ...prev, [index]: data }))
       setAnalysisPanel({ video, index })
     } catch (e) {
-      console.error(e)
+      console.error('Analyze exception:', e)
+      setAnalyzeError(index)
     } finally {
       setAnalyzing(null)
     }
@@ -403,12 +414,22 @@ export default function ResearchPage() {
                         <Plus size={11} /> Save idea
                       </button>
                       <button
-                        onClick={() => analyzeVideo(video, i)}
+                        onClick={() => { setAnalyzeError(null); analyzeVideo(video, i) }}
                         disabled={analyzing === i}
-                        className="flex items-center gap-1 text-xs text-[#a78bfa] hover:text-[#c4b5fd] transition-colors disabled:opacity-50"
+                        className={`flex items-center gap-1 text-xs transition-colors disabled:opacity-50 ${
+                          analyzeError === i
+                            ? 'text-[#ef4444] hover:text-[#f87171]'
+                            : 'text-[#a78bfa] hover:text-[#c4b5fd]'
+                        }`}
                       >
-                        {analyzing === i ? <RefreshCw size={11} className="animate-spin" /> : <Sparkles size={11} />}
-                        {analyzing === i ? 'Analyzing…' : analyses[i] ? 'Re-analyze' : 'Analyze'}
+                        {analyzing === i
+                          ? <RefreshCw size={11} className="animate-spin" />
+                          : <Sparkles size={11} />}
+                        {analyzing === i
+                          ? 'Analyzing…'
+                          : analyzeError === i
+                          ? 'Failed — retry?'
+                          : analyses[i] ? 'Re-analyze' : 'Analyze'}
                       </button>
                       <a
                         href={video.url}
