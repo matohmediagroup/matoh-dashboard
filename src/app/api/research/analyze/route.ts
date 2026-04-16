@@ -135,7 +135,7 @@ verdict must be "strong", "average", or "weak". score is 1-10. All other fields 
 
   const message = await client.messages.create({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    model: 'claude-opus-4-5' as any,
+    model: 'claude-3-5-haiku-20241022' as any,
     max_tokens: 1024,
     messages: [{ role: 'user', content: promptText }],
   })

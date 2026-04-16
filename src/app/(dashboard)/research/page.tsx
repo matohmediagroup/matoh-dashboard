@@ -480,6 +480,14 @@ export default function ResearchPage() {
 
       </div>
 
+      {/* ── Analyzing toast ── */}
+      {analyzing !== null && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 bg-[#1e1e1e] border border-[#3a3a3a] rounded-full shadow-xl">
+          <RefreshCw size={14} className="animate-spin text-[#a78bfa]" />
+          <span className="text-sm text-[#e8e8e8]">Analyzing video with Claude…</span>
+        </div>
+      )}
+
       {/* ── Analysis Modal ── */}
       {analysisPanel !== null && (() => {
         const { video, index } = analysisPanel
