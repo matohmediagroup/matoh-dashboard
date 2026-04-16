@@ -100,6 +100,7 @@ export default function ResearchPage() {
 
   // Per-video analysis
   const [analyses, setAnalyses] = useState<Record<number, Analysis>>({})
+  const [transcriptSources, setTranscriptSources] = useState<Record<number, 'assemblyai' | 'none'>>({})
   const [analyzing, setAnalyzing] = useState<number | null>(null)
 
   // Sidebar
@@ -175,7 +176,10 @@ export default function ResearchPage() {
         body: JSON.stringify({ platform: video.platform, videoId, downloadUrl: video.downloadUrl, title: video.title, views: video.views, likes: video.likes, comments: video.comments }),
       })
       const data = await res.json()
-      if (res.ok && !data.error) setAnalyses(prev => ({ ...prev, [index]: data.analysis }))
+      if (res.ok && !data.error) {
+        setAnalyses(prev => ({ ...prev, [index]: data.analysis }))
+        setTranscriptSources(prev => ({ ...prev, [index]: data.transcriptSource ?? 'none' }))
+      }
     } catch (e) { console.error(e) }
     finally { setAnalyzing(null) }
   }
@@ -530,6 +534,19 @@ export default function ResearchPage() {
                               <p className="text-sm font-semibold capitalize" style={{ color: verdictColor(a.verdict) }}>{a.verdict}</p>
                             </div>
                           </div>
+                          {/* ── Transcript source badge ── */}
+                          <div className="flex items-center gap-1.5">
+                            {transcriptSources[sidebarVideo.index] === 'assemblyai' ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-[#14532d] text-[#4ade80] font-medium">
+                                🎙 Real transcription
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-[#3f2a00] text-[#f59e0b] font-medium">
+                                ⚠ Inferred from title
+                              </span>
+                            )}
+                          </div>
+
                           {/* ── Transcript sections ── */}
                           {a.hook && (
                             <div>
