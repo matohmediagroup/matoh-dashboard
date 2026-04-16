@@ -15,31 +15,28 @@ const YOUTUBE_COMPETITORS = [
   { handle: 'donutmedia',      label: 'Donut Media' },
 ]
 
+// Reduced to 2 each so all 4 Apify jobs fit within Vercel's 60s timeout
 const TIKTOK_COMPETITORS = [
   { handle: 'milesperhr',  label: 'Miles Per Hr' },
-  { handle: 'omardrives',  label: 'Omar Drives' },
   { handle: 'carthrottle', label: 'Car Throttle' },
-  { handle: 'carscouted',  label: 'Car Scouted' },
 ]
 
 const INSTAGRAM_COMPETITORS = [
   { handle: 'supercarblondie', label: 'Supercar Blondie' },
-  { handle: 'carthrottle',     label: 'Car Throttle' },
   { handle: 'motortrend',      label: 'MotorTrend' },
-  { handle: 'carwow',          label: 'Carwow' },
-  { handle: 'throtl',          label: 'Throtl' },
 ]
 
-async function pollApifyRun(runId: string, maxWaitMs = 45000): Promise<string | null> {
-  const start = Date.now()
-  while (Date.now() - start < maxWaitMs) {
-    await new Promise(r => setTimeout(r, 3000))
-    const res = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`)
+// Use Apify's built-in waitForFinish instead of manual polling — faster & simpler
+async function startApifyAndWait(actorId: string, input: object): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `https://api.apify.com/v2/acts/${actorId}/runs?token=${APIFY_TOKEN}&waitForFinish=45`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) }
+    )
     const d = await res.json() as { data?: { status?: string; defaultDatasetId?: string } }
     if (d?.data?.status === 'SUCCEEDED') return d.data.defaultDatasetId || null
-    if (d?.data?.status === 'FAILED' || d?.data?.status === 'ABORTED') return null
-  }
-  return null
+    return null
+  } catch { return null }
 }
 
 // ── YouTube Shorts ──────────────────────────────────────────────────────────
@@ -90,21 +87,10 @@ async function fetchYouTubeShorts(handle: string, label: string) {
 
 async function fetchTikTokTopVideos(handle: string, label: string) {
   try {
-    const startRes = await fetch(
-      `https://api.apify.com/v2/acts/clockworks~free-tiktok-scraper/runs?token=${APIFY_TOKEN}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profiles: [handle], resultsPerPage: 5, shouldDownloadVideos: false }),
-      }
-    )
-    const startData = await startRes.json() as { data?: { id?: string } }
-    const runId = startData?.data?.id
-    if (!runId) return []
-
-    const datasetId = await pollApifyRun(runId)
+    const datasetId = await startApifyAndWait('clockworks~free-tiktok-scraper', {
+      profiles: [handle], resultsPerPage: 5, shouldDownloadVideos: false,
+    })
     if (!datasetId) return []
-
     const itemsRes = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_TOKEN}&limit=5`)
     const items = await itemsRes.json() as any[]
     return items.map((v: any) => ({
@@ -125,29 +111,16 @@ async function fetchTikTokTopVideos(handle: string, label: string) {
 
 async function fetchInstagramReels(handle: string, label: string) {
   try {
-    const startRes = await fetch(
-      `https://api.apify.com/v2/acts/apify~instagram-scraper/runs?token=${APIFY_TOKEN}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          directUrls: [`https://www.instagram.com/${handle}/reels/`],
-          resultsType: 'posts',
-          resultsLimit: 5,
-        }),
-      }
-    )
-    const startData = await startRes.json() as { data?: { id?: string } }
-    const runId = startData?.data?.id
-    if (!runId) return []
-
-    const datasetId = await pollApifyRun(runId)
+    const datasetId = await startApifyAndWait('apify~instagram-scraper', {
+      directUrls: [`https://www.instagram.com/${handle}/reels/`],
+      resultsType: 'posts',
+      resultsLimit: 5,
+    })
     if (!datasetId) return []
-
     const itemsRes = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_TOKEN}&limit=5`)
     const items = await itemsRes.json() as any[]
     return items
-      .filter((v: any) => v.type === 'Video' || v.productType === 'clips')
+      .filter((v: any) => v.type === 'Video' || v.productType === 'clips' || v.isVideo)
       .map((v: any) => ({
         handle, label, platform: 'instagram' as const,
         title: v.caption || v.alt || '',
