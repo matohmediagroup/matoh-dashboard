@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { RefreshCw, Settings, Eye, MessageCircle, Heart, ExternalLink, TrendingUp } from 'lucide-react'
-import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
+import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -70,12 +70,11 @@ function get30DayStats(stat: SocialStats) {
   }
 }
 
-// ── Weekly views bar chart ────────────────────────────────────────────────────
-// Aggregates all posts into 4 weekly buckets. Weekly totals smooth out
-// individual video variance — one weak video doesn't tank the chart.
-// This is the same approach Sprout Social, Hootsuite, and Metricool use.
+// ── Cumulative reach area chart ───────────────────────────────────────────────
+// Filters videos to the last 30 days, sorts oldest → newest, then builds a
+// running total of views so the chart shows total accumulated reach over time.
 
-function PlatformChart({ videos, platform, clientId }: {
+function CumulativeChart({ videos, platform, clientId }: {
   videos: VideoItem[]
   platform: Platform
   clientId: string
@@ -83,27 +82,18 @@ function PlatformChart({ videos, platform, clientId }: {
   const cfg    = PLATFORM_CONFIG[platform]
   const gradId = `g-${clientId.slice(0, 6)}-${platform}`
   const now    = new Date()
+  const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+  const minDate = new Date('2020-01-01')
 
-  // Build 4 weekly buckets, oldest → newest
-  const buckets = Array.from({ length: 4 }, (_, i) => {
-    const weekEnd   = new Date(now.getTime() - (3 - i) * 7 * 24 * 60 * 60 * 1000)
-    const weekStart = new Date(weekEnd.getTime() - 7 * 24 * 60 * 60 * 1000)
-    const label = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    return { weekStart, weekEnd, label, views: 0, posts: 0 }
-  })
+  const sorted = (videos ?? [])
+    .filter(v => {
+      if (!v.date) return false
+      const d = new Date(v.date)
+      return !isNaN(d.getTime()) && d >= cutoff && d <= now && d >= minDate
+    })
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
-  ;(videos ?? []).forEach(v => {
-    if (!v.date) return
-    const d = new Date(v.date)
-    if (isNaN(d.getTime()) || d > now) return
-    const bucket = buckets.find(b => d >= b.weekStart && d < b.weekEnd)
-    if (bucket) { bucket.views += v.views || 0; bucket.posts += 1 }
-  })
-
-  const data = buckets.map(b => ({ label: b.label, views: b.views, posts: b.posts }))
-  const hasData = data.some(d => d.views > 0)
-
-  if (!hasData) {
+  if (sorted.length < 2) {
     return (
       <div className="h-28 flex items-center justify-center">
         <p className="text-[11px] text-[#444]">No data — hit refresh</p>
@@ -111,14 +101,21 @@ function PlatformChart({ videos, platform, clientId }: {
     )
   }
 
+  let running = 0
+  const data = sorted.map(v => {
+    running += v.views || 0
+    const label = new Date(v.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    return { label, total: running }
+  })
+
   return (
     <div className="h-28">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 4, right: 2, left: -20, bottom: 0 }} barSize={28}>
+        <AreaChart data={data} margin={{ top: 4, right: 2, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%"   stopColor={cfg.color} stopOpacity={0.9} />
-              <stop offset="100%" stopColor={cfg.color} stopOpacity={0.3} />
+              <stop offset="0%"   stopColor={cfg.color} stopOpacity={0.35} />
+              <stop offset="100%" stopColor={cfg.color} stopOpacity={0.02} />
             </linearGradient>
           </defs>
           <XAxis
@@ -126,51 +123,29 @@ function PlatformChart({ videos, platform, clientId }: {
             tick={{ fontSize: 9, fill: '#555' }}
             axisLine={false}
             tickLine={false}
+            interval="preserveStartEnd"
           />
           <Tooltip
-            cursor={{ fill: 'rgba(255,255,255,0.04)' }}
-            content={({ active, payload, label }: any) => {
+            cursor={{ stroke: 'rgba(255,255,255,0.08)', strokeWidth: 1 }}
+            content={({ active, payload }: any) => {
               if (!active || !payload?.length) return null
               return (
                 <div className="bg-[#161616] border border-[#2a2a2a] rounded-lg px-3 py-2 text-[11px] shadow-xl">
-                  <p className="text-[#666] mb-1">Week of {label}</p>
-                  <p className="font-bold" style={{ color: cfg.color }}>{formatNum(payload[0].value)} views</p>
-                  <p className="text-[#555]">{payload[0]?.payload?.posts} posts</p>
+                  <p className="font-bold" style={{ color: cfg.color }}>{formatNum(payload[0].value)} total reach</p>
                 </div>
               )
             }}
           />
-          <Bar dataKey="views" fill={`url(#${gradId})`} radius={[4, 4, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  )
-}
-
-// ── Engagement sparkline (tiny bar chart, kept for engagement trend) ──────────
-
-function EngagementBars({ videos, color }: { videos: VideoItem[]; color: string }) {
-  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-  const data = (videos ?? [])
-    .filter(v => {
-      if (!v.date) return false
-      const d = new Date(v.date)
-      return !isNaN(d.getTime()) && d >= cutoff && d <= new Date()
-    })
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    .slice(-20)
-    .map(v => ({
-      eng: v.views > 0 ? parseFloat(((v.likes + v.comments) / v.views * 100).toFixed(2)) : 0,
-    }))
-
-  if (data.length < 2) return null
-
-  return (
-    <div className="h-8">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 0, right: 0, left: 0, bottom: 0 }} barSize={3} barGap={1}>
-          <Bar dataKey="eng" fill={color} opacity={0.5} radius={[1, 1, 0, 0]} />
-        </BarChart>
+          <Area
+            type="monotone"
+            dataKey="total"
+            stroke={cfg.color}
+            strokeWidth={1.5}
+            fill={`url(#${gradId})`}
+            dot={false}
+            activeDot={{ r: 3, fill: cfg.color, strokeWidth: 0 }}
+          />
+        </AreaChart>
       </ResponsiveContainer>
     </div>
   )
@@ -436,23 +411,15 @@ export default function SocialPage() {
                           {/* Chart label */}
                           <div className="flex items-center gap-1.5 mb-1.5">
                             <TrendingUp size={10} style={{ color: cfg.color }} />
-                            <p className="text-[9px] uppercase tracking-wider text-[#444]">Total views · by week</p>
+                            <p className="text-[9px] uppercase tracking-wider text-[#444]">Cumulative reach · 30 days</p>
                           </div>
 
-                          {/* Area chart */}
-                          <PlatformChart
+                          {/* Cumulative reach chart */}
+                          <CumulativeChart
                             videos={stat.latest_videos}
                             platform={platform}
                             clientId={client.id}
                           />
-
-                          {/* Engagement sparkline */}
-                          {(d30?.posts ?? 0) > 2 && (
-                            <div className="mt-3">
-                              <p className="text-[9px] uppercase tracking-wider text-[#444] mb-1">Engagement rate trend</p>
-                              <EngagementBars videos={stat.latest_videos} color={cfg.color} />
-                            </div>
-                          )}
 
                           {/* Recent videos quick list */}
                           {(stat.latest_videos ?? []).length > 0 && (
@@ -474,13 +441,14 @@ export default function SocialPage() {
                                       href={v.url}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="flex items-center gap-2 group"
+                                      className="flex items-center gap-2 group pl-2 py-0.5 rounded-sm"
+                                      style={{ borderLeft: `2px solid ${cfg.color}30` }}
                                     >
                                       <span className="text-[10px] text-[#444] w-3 flex-shrink-0">{i + 1}</span>
                                       <p className="text-[10px] text-[#888] group-hover:text-[#ccc] transition-colors flex-1 line-clamp-1 leading-snug">
                                         {v.title || 'Untitled'}
                                       </p>
-                                      <span className="text-[10px] text-[#555] flex-shrink-0">{formatNum(v.views)}</span>
+                                      <span className="text-xs text-[#555] flex-shrink-0">{formatNum(v.views)}</span>
                                       <ExternalLink size={8} className="text-[#333] group-hover:text-[#555] flex-shrink-0" />
                                     </a>
                                   ))}
