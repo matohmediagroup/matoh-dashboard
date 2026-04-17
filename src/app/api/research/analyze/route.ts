@@ -8,7 +8,7 @@ const ASSEMBLY_AI_API_KEY = process.env.ASSEMBLY_AI_API_KEY
 const ANTHROPIC_API_KEY   = process.env.ANTHROPIC_API_KEY
 const APIFY_TOKEN         = process.env.APIFY_API_TOKEN
 
-// ── YouTube captions ──────────────────────────────────────────────────────────
+// ── YouTube: timedtext captions ───────────────────────────────────────────────
 
 async function getYouTubeCaptions(videoId: string): Promise<string | null> {
   try {
@@ -18,53 +18,76 @@ async function getYouTubeCaptions(videoId: string): Promise<string | null> {
     if (!res.ok) return null
     const data = await res.json() as { events?: { segs?: { utf8?: string }[] }[] }
     if (!data?.events?.length) return null
-
     const text = data.events
       .flatMap(e => e.segs ?? [])
       .map(s => s.utf8 ?? '')
       .join('')
       .replace(/\n/g, ' ')
       .trim()
-
     return text || null
-  } catch {
-    return null
-  }
+  } catch { return null }
 }
 
-// ── Apify: fetch fresh download URL at analyze-time ───────────────────────────
-// Stored CDN URLs expire quickly. We re-scrape the specific video via Apify
-// to get a live download URL each time Analyze is clicked.
+// ── TikTok: Apify scrape with shouldDownloadVideos → KV store → download ──────
+// TikTok CDN URLs require session cookies and expire quickly.
+// When shouldDownloadVideos=true, Apify downloads and stores the file in their
+// own Key-Value Store — accessible with just our API token, no TikTok auth needed.
 
-async function getFreshTikTokUrl(videoUrl: string): Promise<string | null> {
+async function getTikTokBuffer(tiktokPageUrl: string): Promise<ArrayBuffer | null> {
   if (!APIFY_TOKEN) return null
   try {
-    const res = await fetch(
-      `https://api.apify.com/v2/acts/clockworks~free-tiktok-scraper/runs?token=${APIFY_TOKEN}&waitForFinish=45`,
+    const runRes = await fetch(
+      `https://api.apify.com/v2/acts/clockworks~free-tiktok-scraper/runs?token=${APIFY_TOKEN}&waitForFinish=60`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ postURLs: [videoUrl], shouldDownloadVideos: false }),
+        body: JSON.stringify({
+          postURLs: [tiktokPageUrl],
+          shouldDownloadVideos: true,
+          shouldDownloadCovers: false,
+        }),
       }
     )
-    const data = await res.json() as { data?: { status?: string; defaultDatasetId?: string } }
-    if (data?.data?.status !== 'SUCCEEDED') return null
+    const runData = await runRes.json() as {
+      data?: { status?: string; defaultKeyValueStoreId?: string }
+    }
+    if (runData?.data?.status !== 'SUCCEEDED') return null
 
-    const itemsRes = await fetch(
-      `https://api.apify.com/v2/datasets/${data.data!.defaultDatasetId}/items?token=${APIFY_TOKEN}&limit=1`
+    const kvStoreId = runData.data!.defaultKeyValueStoreId
+    if (!kvStoreId) return null
+
+    // List records in the KV store — find the video file (not the INPUT record)
+    const keysRes = await fetch(
+      `https://api.apify.com/v2/key-value-stores/${kvStoreId}/keys?token=${APIFY_TOKEN}&limit=100`
     )
-    const items = await itemsRes.json() as any[]
-    return items[0]?.video?.playAddr || items[0]?.video?.downloadAddr || null
-  } catch {
-    return null
-  }
+    const keysData = await keysRes.json() as {
+      data?: { items?: { key: string; contentType?: string }[] }
+    }
+    const videoRecord = (keysData.data?.items ?? []).find(item => {
+      const ct = item.contentType || ''
+      return ct.startsWith('video/') ||
+             item.key.match(/\.(mp4|webm|mov)$/i) ||
+             (ct.includes('octet-stream') && item.key !== 'INPUT')
+    })
+    if (!videoRecord) return null
+
+    // Download the video directly from Apify's storage
+    const videoRes = await fetch(
+      `https://api.apify.com/v2/key-value-stores/${kvStoreId}/records/${encodeURIComponent(videoRecord.key)}?token=${APIFY_TOKEN}`
+    )
+    if (!videoRes.ok) return null
+    const buffer = await videoRes.arrayBuffer()
+    return buffer.byteLength > 1000 ? buffer : null
+  } catch { return null }
 }
 
-async function getFreshInstagramUrl(postUrl: string): Promise<string | null> {
+// ── Instagram: Apify scrape → videoUrl (no cookies needed for public posts) ───
+
+async function getInstagramBuffer(postUrl: string): Promise<ArrayBuffer | null> {
   if (!APIFY_TOKEN) return null
   try {
-    const res = await fetch(
-      `https://api.apify.com/v2/acts/apify~instagram-scraper/runs?token=${APIFY_TOKEN}&waitForFinish=45`,
+    const runRes = await fetch(
+      `https://api.apify.com/v2/acts/apify~instagram-scraper/runs?token=${APIFY_TOKEN}&waitForFinish=50`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -75,42 +98,32 @@ async function getFreshInstagramUrl(postUrl: string): Promise<string | null> {
         }),
       }
     )
-    const data = await res.json() as { data?: { status?: string; defaultDatasetId?: string } }
-    if (data?.data?.status !== 'SUCCEEDED') return null
+    const runData = await runRes.json() as {
+      data?: { status?: string; defaultDatasetId?: string }
+    }
+    if (runData?.data?.status !== 'SUCCEEDED') return null
 
     const itemsRes = await fetch(
-      `https://api.apify.com/v2/datasets/${data.data!.defaultDatasetId}/items?token=${APIFY_TOKEN}&limit=1`
+      `https://api.apify.com/v2/datasets/${runData.data!.defaultDatasetId}/items?token=${APIFY_TOKEN}&limit=1`
     )
     const items = await itemsRes.json() as any[]
-    return items[0]?.videoUrl || items[0]?.video_url || null
-  } catch {
-    return null
-  }
-}
+    // videoUrl is the Instagram CDN URL — accessible without cookies on public posts
+    const videoUrl: string | undefined = items[0]?.videoUrl || items[0]?.video_url
+    if (!videoUrl) return null
 
-// ── AssemblyAI: download → upload → transcribe ────────────────────────────────
-
-async function downloadVideo(url: string, platform: string): Promise<ArrayBuffer | null> {
-  try {
-    const headers: Record<string, string> = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'video/mp4,video/*;q=0.9,*/*;q=0.8',
-    }
-    if (platform === 'tiktok') {
-      headers['Referer'] = 'https://www.tiktok.com/'
-      headers['Origin']  = 'https://www.tiktok.com'
-    } else if (platform === 'instagram') {
-      headers['Referer'] = 'https://www.instagram.com/'
-      headers['Origin']  = 'https://www.instagram.com'
-    }
-    const res = await fetch(url, { headers })
-    if (!res.ok) return null
-    const buffer = await res.arrayBuffer()
+    const videoRes = await fetch(videoUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://www.instagram.com/',
+      },
+    })
+    if (!videoRes.ok) return null
+    const buffer = await videoRes.arrayBuffer()
     return buffer.byteLength > 1000 ? buffer : null
-  } catch {
-    return null
-  }
+  } catch { return null }
 }
+
+// ── AssemblyAI: upload buffer → transcribe ────────────────────────────────────
 
 async function uploadToAssemblyAI(buffer: ArrayBuffer): Promise<string | null> {
   if (!ASSEMBLY_AI_API_KEY) return null
@@ -126,9 +139,7 @@ async function uploadToAssemblyAI(buffer: ArrayBuffer): Promise<string | null> {
     if (!res.ok) return null
     const data = await res.json() as { upload_url?: string }
     return data.upload_url || null
-  } catch {
-    return null
-  }
+  } catch { return null }
 }
 
 async function transcribeWithAssemblyAI(audioUrl: string): Promise<string | null> {
@@ -158,9 +169,13 @@ async function transcribeWithAssemblyAI(audioUrl: string): Promise<string | null
       if (pollData.status === 'error') return null
     }
     return null
-  } catch {
-    return null
-  }
+  } catch { return null }
+}
+
+async function transcribeBuffer(buffer: ArrayBuffer): Promise<string | null> {
+  const uploadUrl = await uploadToAssemblyAI(buffer)
+  if (!uploadUrl) return null
+  return transcribeWithAssemblyAI(uploadUrl)
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -169,7 +184,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json() as {
     platform: string
     videoId?: string
-    videoUrl?: string   // full platform URL used to re-scrape fresh download link
+    videoUrl?: string
     downloadUrl?: string
     title: string
     views: number
@@ -177,49 +192,31 @@ export async function POST(req: NextRequest) {
     comments: number
   }
 
-  const { platform, videoId, videoUrl, downloadUrl, title, views, likes, comments } = body
+  const { platform, videoId, videoUrl, title, views, likes, comments } = body
 
-  // ── Transcribe ──────────────────────────────────────────────────────────────
   let transcriptText: string | null = null
   let transcriptSource: 'assemblyai' | 'captions' | 'none' = 'none'
 
   if (platform === 'youtube_shorts' || platform === 'youtube') {
-    // YouTube: timedtext captions are reliable and instant
     if (videoId) {
       transcriptText = await getYouTubeCaptions(videoId)
       if (transcriptText) transcriptSource = 'captions'
     }
-  } else if (platform === 'tiktok') {
-    // TikTok: re-scrape the specific video via Apify to get a fresh CDN URL,
-    // then download it on our server and upload to AssemblyAI
-    let freshUrl: string | null = null
-    if (videoUrl) freshUrl = await getFreshTikTokUrl(videoUrl)
-    // fall back to stored URL if Apify fails (might still work if fresh enough)
-    const urlToUse = freshUrl || downloadUrl
-    if (urlToUse) {
-      const buffer = await downloadVideo(urlToUse, 'tiktok')
-      if (buffer) {
-        const uploadUrl = await uploadToAssemblyAI(buffer)
-        if (uploadUrl) {
-          transcriptText = await transcribeWithAssemblyAI(uploadUrl)
-          if (transcriptText) transcriptSource = 'assemblyai'
-        }
-      }
+
+  } else if (platform === 'tiktok' && videoUrl) {
+    // Apify downloads the video into their KV store — no TikTok CDN auth issues
+    const buffer = await getTikTokBuffer(videoUrl)
+    if (buffer) {
+      transcriptText = await transcribeBuffer(buffer)
+      if (transcriptText) transcriptSource = 'assemblyai'
     }
-  } else if (platform === 'instagram') {
-    // Instagram: same approach — re-scrape for a fresh video URL
-    let freshUrl: string | null = null
-    if (videoUrl) freshUrl = await getFreshInstagramUrl(videoUrl)
-    const urlToUse = freshUrl || downloadUrl
-    if (urlToUse) {
-      const buffer = await downloadVideo(urlToUse, 'instagram')
-      if (buffer) {
-        const uploadUrl = await uploadToAssemblyAI(buffer)
-        if (uploadUrl) {
-          transcriptText = await transcribeWithAssemblyAI(uploadUrl)
-          if (transcriptText) transcriptSource = 'assemblyai'
-        }
-      }
+
+  } else if (platform === 'instagram' && videoUrl) {
+    // Apify scrapes fresh videoUrl — Instagram CDN works without cookies on public posts
+    const buffer = await getInstagramBuffer(videoUrl)
+    if (buffer) {
+      transcriptText = await transcribeBuffer(buffer)
+      if (transcriptText) transcriptSource = 'assemblyai'
     }
   }
 
@@ -258,15 +255,13 @@ Rules:
 - verdict: "strong", "average", or "weak"
 - score: 1-10
 - hook: the ACTUAL opening words/lines from the transcript (verbatim quote). If no transcript, infer from title.
-- body: the ACTUAL main content from the transcript — what is said in the middle (verbatim or close paraphrase). If no transcript, summarize from title.
+- body: the ACTUAL main content from the transcript — what is said in the middle. If no transcript, summarize from title.
 - cta: the ACTUAL call-to-action words spoken at the end (verbatim quote). If no transcript, write "No CTA detected".
 - why_it_worked: 3 bullet points on WHY this video performed well
 - what_to_steal: one specific tactic a car dealership could copy
 - watch_out: one thing to avoid or be careful about`
 
-  // ── Call Claude ─────────────────────────────────────────────────────────────
   const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY })
-
   const message = await client.messages.create({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     model: 'claude-opus-4-5' as any,
@@ -276,7 +271,6 @@ Rules:
 
   const raw = (message.content[0] as { type: string; text: string }).text || ''
 
-  // ── Parse response ──────────────────────────────────────────────────────────
   let analysis: object
   try {
     analysis = JSON.parse(raw)
