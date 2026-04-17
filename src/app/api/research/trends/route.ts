@@ -6,24 +6,26 @@ import { NextResponse } from 'next/server'
 const YOUTUBE_KEY = process.env.YOUTUBE_API_KEY!
 const APIFY_TOKEN = process.env.APIFY_API_TOKEN!
 
+// YouTube — uses Google API (fast), can handle more accounts
 const YOUTUBE_COMPETITORS = [
-  { handle: 'supercarblondie', label: 'Supercar Blondie' },
-  { handle: 'TFLcar',          label: 'TFL Car' },
-  { handle: 'carwow',          label: 'Carwow' },
-  { handle: 'VINwiki',         label: 'VINwiki' },
-  { handle: 'MotorTrend',      label: 'MotorTrend' },
-  { handle: 'donutmedia',      label: 'Donut Media' },
+  { handle: 'matwatsoncars',              label: 'Mat Watson Cars' },
+  { handle: 'omardrives',                 label: 'Omar Drives' },
+  { handle: 'forrest.auto.reviews.official', label: 'Forrest Auto Reviews' },
+  { handle: 'milesperhr',                 label: 'Miles Per Hr' },
 ]
 
-// Reduced to 2 each so all 4 Apify jobs fit within Vercel's 60s timeout
+// TikTok — Apify jobs (run in parallel, 3 max to stay within 60s)
 const TIKTOK_COMPETITORS = [
-  { handle: 'milesperhr',  label: 'Miles Per Hr' },
-  { handle: 'carthrottle', label: 'Car Throttle' },
+  { handle: 'milesperhr',    label: 'Miles Per Hr' },
+  { handle: 'mattblattkiaab', label: 'Matt Blatt Kia AB' },
+  { handle: 'mattblattkiatr', label: 'Matt Blatt Kia TR' },
 ]
 
+// Instagram — Apify jobs (run in parallel, 3 max to stay within 60s)
 const INSTAGRAM_COMPETITORS = [
-  { handle: 'supercarblondie', label: 'Supercar Blondie' },
-  { handle: 'motortrend',      label: 'MotorTrend' },
+  { handle: 'porschevirginiabeach', label: 'Porsche Virginia Beach' },
+  { handle: 'pushingpistons',       label: 'Pushing Pistons' },
+  { handle: 'omardrives',           label: 'Omar Drives' },
 ]
 
 // Use Apify's built-in waitForFinish instead of manual polling — faster & simpler

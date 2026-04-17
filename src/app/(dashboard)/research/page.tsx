@@ -38,15 +38,15 @@ type Platform = 'youtube' | 'tiktok' | 'instagram'
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const QUICK_CHIPS: { handle: string; platform: Platform; label: string }[] = [
-  { handle: '@milesperhr',      platform: 'tiktok',    label: 'Miles Per Hr' },
-  { handle: '@omardrives',      platform: 'tiktok',    label: 'Omar Drives' },
-  { handle: '@carthrottle',     platform: 'tiktok',    label: 'Car Throttle' },
-  { handle: '@carscouted',      platform: 'tiktok',    label: 'Car Scouted' },
-  { handle: '@carwow',          platform: 'youtube',   label: 'Carwow' },
-  { handle: '@donutmedia',      platform: 'youtube',   label: 'Donut Media' },
-  { handle: '@motortrend',      platform: 'youtube',   label: 'MotorTrend' },
-  { handle: '@supercarblondie', platform: 'instagram', label: 'Supercar Blondie' },
-  { handle: '@throtl',          platform: 'instagram', label: 'Throtl' },
+  { handle: '@milesperhr',                    platform: 'tiktok',    label: 'Miles Per Hr' },
+  { handle: '@mattblattkiaab',                platform: 'tiktok',    label: 'Matt Blatt Kia AB' },
+  { handle: '@mattblattkiatr',                platform: 'tiktok',    label: 'Matt Blatt Kia TR' },
+  { handle: '@matwatsoncars',                 platform: 'youtube',   label: 'Mat Watson Cars' },
+  { handle: '@omardrives',                    platform: 'youtube',   label: 'Omar Drives' },
+  { handle: '@milesperhr',                    platform: 'youtube',   label: 'Miles Per Hr' },
+  { handle: '@porschevirginiabeach',          platform: 'instagram', label: 'Porsche VB' },
+  { handle: '@pushingpistons',                platform: 'instagram', label: 'Pushing Pistons' },
+  { handle: '@omardrives',                    platform: 'instagram', label: 'Omar Drives' },
 ]
 
 const PLATFORM_META = {
