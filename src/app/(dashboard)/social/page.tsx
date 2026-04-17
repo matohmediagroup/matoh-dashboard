@@ -349,10 +349,10 @@ export default function SocialPage() {
                               <span className="text-xs text-[#555]">Posts in period</span>
                               <span className="text-xs font-medium text-[#888]">{d30?.posts ?? '—'}</span>
                             </div>
-                            {d30 && d30.posts > 0 && (
+                            {stat.avg_views > 0 && (
                               <div className="flex items-center justify-between">
                                 <span className="text-xs text-[#555]">Avg views/post</span>
-                                <span className="text-xs font-medium text-[#888]">{formatNum(Math.round(d30.views / d30.posts))}</span>
+                                <span className="text-xs font-medium text-[#888]">{formatNum(stat.avg_views)}</span>
                               </div>
                             )}
                           </div>
