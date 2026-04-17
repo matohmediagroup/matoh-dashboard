@@ -173,7 +173,7 @@ export default function ResearchPage() {
       const res = await fetch('/api/research/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ platform: video.platform, videoId, downloadUrl: video.downloadUrl, title: video.title, views: video.views, likes: video.likes, comments: video.comments }),
+        body: JSON.stringify({ platform: video.platform, videoId, videoUrl: video.url, downloadUrl: video.downloadUrl, title: video.title, views: video.views, likes: video.likes, comments: video.comments }),
       })
       const data = await res.json()
       if (res.ok && !data.error) {
