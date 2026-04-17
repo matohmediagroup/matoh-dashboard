@@ -70,24 +70,10 @@ function get30DayStats(stat: SocialStats) {
   }
 }
 
-// ── Chart tooltip ─────────────────────────────────────────────────────────────
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function ChartTooltip({ active, payload, label, color }: any) {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="bg-[#161616] border border-[#2e2e2e] rounded-lg px-3 py-2 text-[11px] shadow-xl">
-      <p className="text-[#888] mb-1">{label}</p>
-      {payload.map((p: any, i: number) => (
-        <p key={i} style={{ color }} className="font-semibold">
-          {formatNum(p.value)} {p.name === 'views' ? 'views' : p.name === 'likes' ? 'likes' : 'eng%'}
-        </p>
-      ))}
-    </div>
-  )
-}
-
-// ── Platform chart (views per post over 30 days) ──────────────────────────────
+// ── Weekly views bar chart ────────────────────────────────────────────────────
+// Aggregates all posts into 4 weekly buckets. Weekly totals smooth out
+// individual video variance — one weak video doesn't tank the chart.
+// This is the same approach Sprout Social, Hootsuite, and Metricool use.
 
 function PlatformChart({ videos, platform, clientId }: {
   videos: VideoItem[]
@@ -95,43 +81,32 @@ function PlatformChart({ videos, platform, clientId }: {
   clientId: string
 }) {
   const cfg    = PLATFORM_CONFIG[platform]
-  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
   const gradId = `g-${clientId.slice(0, 6)}-${platform}`
+  const now    = new Date()
 
-  // Aggregate by date (multiple posts on same day → sum)
-  const byDate = new Map<string, { views: number; likes: number; comments: number; count: number; rawDate: Date }>()
-  ;(videos ?? [])
-    .filter(v => {
-      if (!v.date) return false
-      const d = new Date(v.date)
-      return !isNaN(d.getTime()) && d >= cutoff && d <= new Date()
-    })
-    .forEach(v => {
-      const d   = new Date(v.date)
-      const key = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-      const existing = byDate.get(key) || { views: 0, likes: 0, comments: 0, count: 0, rawDate: d }
-      byDate.set(key, {
-        views:    existing.views    + (v.views    || 0),
-        likes:    existing.likes    + (v.likes    || 0),
-        comments: existing.comments + (v.comments || 0),
-        count:    existing.count    + 1,
-        rawDate:  existing.rawDate,
-      })
-    })
+  // Build 4 weekly buckets, oldest → newest
+  const buckets = Array.from({ length: 4 }, (_, i) => {
+    const weekEnd   = new Date(now.getTime() - (3 - i) * 7 * 24 * 60 * 60 * 1000)
+    const weekStart = new Date(weekEnd.getTime() - 7 * 24 * 60 * 60 * 1000)
+    const label = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    return { weekStart, weekEnd, label, views: 0, posts: 0 }
+  })
 
-  const data = Array.from(byDate.entries())
-    .sort((a, b) => a[1].rawDate.getTime() - b[1].rawDate.getTime())
-    .map(([date, s]) => ({
-      date,
-      views: s.views,
-      likes: s.likes,
-      eng:   s.views > 0 ? parseFloat(((s.likes + s.comments) / s.views * 100).toFixed(1)) : 0,
-    }))
+  ;(videos ?? []).forEach(v => {
+    if (!v.date) return
+    const d = new Date(v.date)
+    if (isNaN(d.getTime()) || d > now) return
+    const bucket = buckets.find(b => d >= b.weekStart && d < b.weekEnd)
+    if (bucket) { bucket.views += v.views || 0; bucket.posts += 1 }
+  })
 
-  if (data.length < 2) {
+  const data = buckets.map(b => ({ label: b.label, views: b.views, posts: b.posts }))
+  const hasData = data.some(d => d.views > 0)
+
+  if (!hasData) {
     return (
       <div className="h-28 flex items-center justify-center">
-        <p className="text-[11px] text-[#444]">Not enough data — refresh to load</p>
+        <p className="text-[11px] text-[#444]">No data — hit refresh</p>
       </div>
     )
   }
@@ -139,37 +114,40 @@ function PlatformChart({ videos, platform, clientId }: {
   return (
     <div className="h-28">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 6, right: 2, left: -24, bottom: 0 }}>
+        <BarChart data={data} margin={{ top: 4, right: 2, left: -20, bottom: 0 }} barSize={28}>
           <defs>
             <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%"   stopColor={cfg.color} stopOpacity={0.22} />
-              <stop offset="100%" stopColor={cfg.color} stopOpacity={0}    />
+              <stop offset="0%"   stopColor={cfg.color} stopOpacity={0.9} />
+              <stop offset="100%" stopColor={cfg.color} stopOpacity={0.3} />
             </linearGradient>
           </defs>
           <XAxis
-            dataKey="date"
-            tick={{ fontSize: 9, fill: '#444' }}
+            dataKey="label"
+            tick={{ fontSize: 9, fill: '#555' }}
             axisLine={false}
             tickLine={false}
-            interval="preserveStartEnd"
           />
-          <Tooltip content={<ChartTooltip color={cfg.color} />} />
-          <Area
-            type="monotone"
-            dataKey="views"
-            stroke={cfg.color}
-            strokeWidth={1.5}
-            fill={`url(#${gradId})`}
-            dot={false}
-            activeDot={{ r: 3, fill: cfg.color, strokeWidth: 0 }}
+          <Tooltip
+            cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+            content={({ active, payload, label }: any) => {
+              if (!active || !payload?.length) return null
+              return (
+                <div className="bg-[#161616] border border-[#2a2a2a] rounded-lg px-3 py-2 text-[11px] shadow-xl">
+                  <p className="text-[#666] mb-1">Week of {label}</p>
+                  <p className="font-bold" style={{ color: cfg.color }}>{formatNum(payload[0].value)} views</p>
+                  <p className="text-[#555]">{payload[0]?.payload?.posts} posts</p>
+                </div>
+              )
+            }}
           />
-        </AreaChart>
+          <Bar dataKey="views" fill={`url(#${gradId})`} radius={[4, 4, 0, 0]} />
+        </BarChart>
       </ResponsiveContainer>
     </div>
   )
 }
 
-// ── Engagement sparkline (tiny bar chart) ─────────────────────────────────────
+// ── Engagement sparkline (tiny bar chart, kept for engagement trend) ──────────
 
 function EngagementBars({ videos, color }: { videos: VideoItem[]; color: string }) {
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
@@ -458,7 +436,7 @@ export default function SocialPage() {
                           {/* Chart label */}
                           <div className="flex items-center gap-1.5 mb-1.5">
                             <TrendingUp size={10} style={{ color: cfg.color }} />
-                            <p className="text-[9px] uppercase tracking-wider text-[#444]">Views per post · 30 days</p>
+                            <p className="text-[9px] uppercase tracking-wider text-[#444]">Total views · by week</p>
                           </div>
 
                           {/* Area chart */}
