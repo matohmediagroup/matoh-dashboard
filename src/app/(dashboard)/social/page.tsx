@@ -53,14 +53,21 @@ function formatNum(n: number): string {
   return String(n)
 }
 
-function calc30Days(videos: VideoItem[]) {
+// The API now stores 30-day aggregates directly in total_views / total_likes / post_count.
+// Comments aren't a dedicated column, so we sum them from latest_videos filtered to 30d.
+function comments30Days(videos: VideoItem[]): number {
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-  const recent = (videos ?? []).filter(v => v.date && new Date(v.date) >= cutoff)
+  return (videos ?? [])
+    .filter(v => v.date && new Date(v.date) >= cutoff)
+    .reduce((s, v) => s + (v.comments || 0), 0)
+}
+
+function get30DayStats(stat: SocialStats) {
   return {
-    views:    recent.reduce((s, v) => s + (v.views    || 0), 0),
-    likes:    recent.reduce((s, v) => s + (v.likes    || 0), 0),
-    comments: recent.reduce((s, v) => s + (v.comments || 0), 0),
-    posts:    recent.length,
+    views:    stat.total_views,
+    likes:    stat.total_likes,
+    comments: comments30Days(stat.latest_videos),
+    posts:    stat.post_count,
   }
 }
 
@@ -166,7 +173,7 @@ export default function SocialPage() {
     for (const p of platforms) {
       const stat = getStat(c.id, p)
       if (!stat) continue
-      const d = calc30Days(stat.latest_videos)
+      const d = get30DayStats(stat)
       acc.views    += d.views
       acc.likes    += d.likes
       acc.comments += d.comments
@@ -220,7 +227,7 @@ export default function SocialPage() {
           const combined = platforms.reduce((acc, p) => {
             const stat = getStat(client.id, p)
             if (!stat) return acc
-            const d = calc30Days(stat.latest_videos)
+            const d = get30DayStats(stat)
             acc.views    += d.views
             acc.likes    += d.likes
             acc.comments += d.comments
@@ -276,7 +283,7 @@ export default function SocialPage() {
                   const stat    = getStat(client.id, platform)
                   const cfg     = PLATFORM_CONFIG[platform]
                   const isRefreshing = refreshing === `${client.id}-${platform}`
-                  const d30     = stat ? calc30Days(stat.latest_videos) : null
+                  const d30     = stat ? get30DayStats(stat) : null
 
                   return (
                     <div key={platform} className="p-5">
