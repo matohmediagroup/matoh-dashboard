@@ -53,21 +53,25 @@ function formatNum(n: number): string {
   return String(n)
 }
 
-// The API now stores 30-day aggregates directly in total_views / total_likes / post_count.
-// Comments aren't a dedicated column, so we sum them from latest_videos filtered to 30d.
-function comments30Days(videos: VideoItem[]): number {
-  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-  return (videos ?? [])
-    .filter(v => v.date && new Date(v.date) >= cutoff)
-    .reduce((s, v) => s + (v.comments || 0), 0)
-}
-
+// Compute all 30-day stats from latest_videos with strict date validation.
+// This guarantees views / likes / comments / posts all come from the same
+// filtered set — no risk of stale DB values inflating the count.
 function get30DayStats(stat: SocialStats) {
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+  const now    = new Date()
+
+  const recent = (stat.latest_videos ?? []).filter(v => {
+    if (!v.date) return false
+    const d = new Date(v.date)
+    // reject invalid dates, future dates, and anything older than 30 days
+    return !isNaN(d.getTime()) && d >= cutoff && d <= now
+  })
+
   return {
-    views:    stat.total_views,
-    likes:    stat.total_likes,
-    comments: comments30Days(stat.latest_videos),
-    posts:    stat.post_count,
+    views:    recent.reduce((s, v) => s + (v.views    || 0), 0),
+    likes:    recent.reduce((s, v) => s + (v.likes    || 0), 0),
+    comments: recent.reduce((s, v) => s + (v.comments || 0), 0),
+    posts:    recent.length,
   }
 }
 

@@ -12,9 +12,23 @@ const ACTORS = {
   instagram: 'apify~instagram-profile-scraper',
 }
 
-// 30 days ago as ISO string — used for filtering and YouTube publishedAfter
 function thirtyDaysAgo(): Date {
   return new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+}
+
+// Validate a date string: must be parseable, not in the future, not before 2020
+function isValidRecentDate(dateStr: string): boolean {
+  if (!dateStr) return false
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return false
+  if (d > new Date()) return false                          // no future dates
+  if (d < new Date('2020-01-01')) return false              // no ancient dates
+  return true
+}
+
+function isWithin30Days(dateStr: string, cutoff: Date): boolean {
+  if (!isValidRecentDate(dateStr)) return false
+  return new Date(dateStr) >= cutoff
 }
 
 // ── Apify helper ──────────────────────────────────────────────────────────────
@@ -68,8 +82,8 @@ async function fetchTikTokStats(handle: string) {
     date:     v.createTime ? new Date(v.createTime * 1000).toISOString() : '',
   }))
 
-  // Filter to last 30 days for aggregation
-  const recent = allVideos.filter(v => v.date && new Date(v.date) >= cutoff)
+  // Filter to last 30 days with date validation
+  const recent = allVideos.filter(v => isWithin30Days(v.date, cutoff))
 
   const views_30d    = recent.reduce((s, v) => s + v.views, 0)
   const likes_30d    = recent.reduce((s, v) => s + v.likes, 0)
@@ -111,7 +125,7 @@ async function fetchInstagramStats(handle: string) {
     date:     p.timestamp || p.takenAt || '',
   }))
 
-  const recent = allPosts.filter((p: any) => p.date && new Date(p.date) >= cutoff)
+  const recent = allPosts.filter((p: any) => isWithin30Days(p.date, cutoff))
 
   const views_30d    = recent.reduce((s: number, p: any) => s + p.views, 0)
   const likes_30d    = recent.reduce((s: number, p: any) => s + p.likes, 0)
